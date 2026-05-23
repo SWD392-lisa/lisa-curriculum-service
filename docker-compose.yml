@@ -1,0 +1,115 @@
+version: "3.9"
+
+# ================================================================
+# LISA Platform – Docker Compose
+#
+# Cách chạy:
+#   cp .env.example .env       ← điền token vào .env
+#   docker-compose up --build
+#
+# Endpoints sau khi up:
+#   http://localhost/api/curriculum/...   ← Curriculum API
+#   http://localhost/api/repos/...        ← Repo API
+#   http://localhost/health               ← Gateway health
+#   http://localhost:8080/h2-console      ← DB console (dev)
+# ================================================================
+
+services:
+
+  # ── PostgreSQL ─────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: lisa-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER:     lisa
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lisa_secret}
+      POSTGRES_DB:       lisadb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lisa -d lisadb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - lisa-net
+
+  # ── Curriculum Service ─────────────────────────────────────
+  lisa-curriculum-service:
+    build:
+      context: ./lisa-curriculum-service
+      dockerfile: Dockerfile
+    container_name: lisa-curriculum-service
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL:                   jdbc:postgresql://postgres:5432/lisadb
+      SPRING_DATASOURCE_USERNAME:              lisa
+      SPRING_DATASOURCE_PASSWORD:              ${POSTGRES_PASSWORD:-lisa_secret}
+      DB_DRIVER:                               org.postgresql.Driver
+      SPRING_JPA_HIBERNATE_DDL_AUTO:           update
+      SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT: org.hibernate.dialect.PostgreSQLDialect
+      SPRING_H2_CONSOLE_ENABLED:              "false"
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+    networks:
+      - lisa-net
+
+  # ── Repo Provisioner Service ───────────────────────────────
+  lisa-repo-service:
+    build:
+      context: ./lisa-repo-service
+      dockerfile: Dockerfile
+    container_name: lisa-repo-service
+    restart: unless-stopped
+    depends_on:
+      lisa-curriculum-service:
+        condition: service_healthy
+    environment:
+      GITHUB_TOKEN:        ${GITHUB_TOKEN}
+      GITHUB_ORG:          ${GITHUB_ORG}
+      GITLAB_TOKEN:        ${GITLAB_TOKEN}
+      GITLAB_NAMESPACE_ID: ${GITLAB_NAMESPACE_ID}
+      CURRICULUM_SERVICE_URL: http://lisa-curriculum-service:8080
+    ports:
+      - "8082:8082"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8082/actuator/health || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+    networks:
+      - lisa-net
+
+  # ── Nginx API Gateway ──────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: lisa-gateway
+    restart: unless-stopped
+    depends_on:
+      - lisa-curriculum-service
+      - lisa-repo-service
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - lisa-net
+
+volumes:
+  postgres_data:
+
+networks:
+  lisa-net:
+    driver: bridge

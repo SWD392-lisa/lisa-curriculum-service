@@ -1,0 +1,62 @@
+spring:
+  application:
+    name: lisa-repo-service
+
+server:
+  port: 8082
+
+git:
+  github:
+    token: ${GITHUB_TOKEN:your_github_pat_here}
+    org: ${GITHUB_ORG:your-org}
+    api-url: https://api.github.com
+  gitlab:
+    token: ${GITLAB_TOKEN:your_gitlab_pat_here}
+    namespace-id: ${GITLAB_NAMESPACE_ID:12345}
+    api-url: https://gitlab.com/api/v4
+
+curriculum:
+  service:
+    url: ${CURRICULUM_SERVICE_URL:http://localhost:8080}
+
+lisa:
+  services:
+    - name: lisa-realtime-service
+      description: "Real-time Service: Audio (Agora SDK), Socket.io room management"
+      tech: nodejs
+      topics: [nodejs, socketio, agora, realtime]
+    - name: lisa-lms-service
+      description: "Content & LMS Service: 100-level curriculum, learning logic"
+      tech: java-spring
+      topics: [java, spring-boot, lms, curriculum]
+    - name: lisa-user-payment-service
+      description: "User & Payment Service: Identity, e-wallet, gifts, security"
+      tech: dotnet
+      topics: [dotnet, identity, payment, security]
+    - name: lisa-mobile-app
+      description: "Mobile App: Cross-platform iOS/Android with Flutter"
+      tech: flutter
+      topics: [flutter, ios, android, mobile]
+    - name: lisa-curriculum-service
+      description: "Curriculum Digitizer: Parse Word docs to DB"
+      tech: java-spring
+      topics: [java, spring-boot, curriculum, docx-parser]
+    - name: lisa-api-gateway
+      description: "API Gateway: Route, auth, rate-limit"
+      tech: java-spring
+      topics: [java, spring-cloud-gateway, microservices]
+
+logging:
+  level:
+    com.lisa: DEBUG
+
+# ── Swagger / OpenAPI ────────────────────────────────────────
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+    display-request-duration: true
+    try-it-out-enabled: true

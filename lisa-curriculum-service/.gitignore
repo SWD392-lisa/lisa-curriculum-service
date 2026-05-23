@@ -1,0 +1,10 @@
+target/
+*.class
+.idea/
+*.iml
+.vscode/
+*.log
+.env
+application-prod.yml
+.DS_Store
+Thumbs.db
