@@ -46,16 +46,23 @@ public class CurriculumService {
             int levelsImported = 0, subLevelsImported = 0, tasksImported = 0;
 
             if (overwrite) {
+                // Xóa TOÀN BỘ data của ngôn ngữ trước, flush để tránh duplicate key
                 levelRepo.deleteByLanguage(language);
                 levelRepo.flush();
                 log.info("[Import] Cleared existing {} data before re-import", language);
             }
+
+            // Deduplicate levels theo level_number (phòng trường hợp parser tạo trùng)
+            parsed = deduplicateLevels(parsed);
 
             for (Level level : parsed) {
                 if (!overwrite && levelRepo.existsByLanguageAndLevelNumber(language, level.getLevelNumber())) {
                     warnings.add("Skipped (already exists): Level " + level.getLevelNumber());
                     continue;
                 }
+
+                // Deduplicate sub_levels theo sub_number trong cùng 1 level
+                deduplicateSubLevels(level);
 
                 Level saved = levelRepo.save(level);
                 levelsImported++;
@@ -133,6 +140,35 @@ public class CurriculumService {
     }
 
     // ─── PRIVATE ─────────────────────────────────────────────
+
+    /**
+     * Xóa sub_levels trùng sub_number trong cùng 1 level.
+     * Giữ lại cái đầu tiên, bỏ cái sau.
+     */
+    private List<Level> deduplicateLevels(List<Level> levels) {
+        Map<Integer, Level> seen = new LinkedHashMap<>();
+        for (Level l : levels) {
+            seen.putIfAbsent(l.getLevelNumber(), l);
+        }
+        if (seen.size() < levels.size()) {
+            log.warn("[Import] Removed {} duplicate levels", levels.size() - seen.size());
+        }
+        return new ArrayList<>(seen.values());
+    }
+
+    private void deduplicateSubLevels(Level level) {
+        Map<Integer, SubLevel> seen = new LinkedHashMap<>();
+        for (SubLevel sl : level.getSubLevels()) {
+            seen.putIfAbsent(sl.getSubNumber(), sl);
+        }
+        if (seen.size() < level.getSubLevels().size()) {
+            int removed = level.getSubLevels().size() - seen.size();
+            log.warn("[Import] Level {}: removed {} duplicate sub-levels",
+                    level.getLevelNumber(), removed);
+            level.getSubLevels().clear();
+            seen.values().forEach(sl -> level.getSubLevels().add(sl));
+        }
+    }
 
     private LanguageParser resolveParser(Language language) {
         return switch (language) {
