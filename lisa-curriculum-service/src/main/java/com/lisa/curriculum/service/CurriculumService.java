@@ -45,16 +45,16 @@ public class CurriculumService {
 
             int levelsImported = 0, subLevelsImported = 0, tasksImported = 0;
 
+            if (overwrite) {
+                levelRepo.deleteByLanguage(language);
+                levelRepo.flush();
+                log.info("[Import] Cleared existing {} data before re-import", language);
+            }
+
             for (Level level : parsed) {
-                if (levelRepo.existsByLanguageAndLevelNumber(language, level.getLevelNumber())) {
-                    if (overwrite) {
-                        levelRepo.findByLanguageAndLevelNumber(language, level.getLevelNumber())
-                                .ifPresent(existing -> levelRepo.deleteById(existing.getId()));
-                        warnings.add("Overwritten: Level " + level.getLevelNumber());
-                    } else {
-                        warnings.add("Skipped (already exists): Level " + level.getLevelNumber());
-                        continue;
-                    }
+                if (!overwrite && levelRepo.existsByLanguageAndLevelNumber(language, level.getLevelNumber())) {
+                    warnings.add("Skipped (already exists): Level " + level.getLevelNumber());
+                    continue;
                 }
 
                 Level saved = levelRepo.save(level);
@@ -136,8 +136,8 @@ public class CurriculumService {
 
     private LanguageParser resolveParser(Language language) {
         return switch (language) {
-            case ENGLISH  -> englishParser;
-            case CHINESE  -> chineseParser;
+            case ENGLISH -> englishParser;
+            case CHINESE -> chineseParser;
             case JAPANESE -> japaneseParser;
         };
     }
