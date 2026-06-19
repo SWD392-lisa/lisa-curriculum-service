@@ -2,6 +2,7 @@ package com.lisa.curriculum.controller;
 
 import com.lisa.curriculum.dto.*;
 import com.lisa.curriculum.entity.Language;
+import com.lisa.curriculum.entity.CurriculumImport;
 import com.lisa.curriculum.service.CurriculumService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -135,6 +136,24 @@ public class CurriculumController {
     @GetMapping("/stats")
     public ResponseEntity<Map<String, Long>> getStats() {
         return ResponseEntity.ok(curriculumService.getStats());
+    }
+
+    @Tag(name = "Import")
+    @Operation(summary = "Lấy danh sách lịch sử imports")
+    @GetMapping("/imports")
+    public ResponseEntity<List<CurriculumImport>> getAllImports() {
+        return ResponseEntity.ok(curriculumService.getAllImports());
+    }
+
+    @Tag(name = "Import")
+    @Operation(summary = "Lấy chi tiết 1 báo cáo import")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Báo cáo import"),
+        @ApiResponse(responseCode = "404", description = "Không tìm thấy báo cáo")
+    })
+    @GetMapping("/imports/{id}")
+    public ResponseEntity<CurriculumImport> getImportById(@PathVariable UUID id) {
+        return ResponseEntity.ok(curriculumService.getImportById(id));
     }
 
     @Tag(name = "Import")

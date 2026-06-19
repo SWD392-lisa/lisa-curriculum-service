@@ -6,6 +6,8 @@ import lombok.Data;
 import java.util.List;
 
 @Data @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 @Schema(description = "Sub-level (10–20 phút) trong 1 Level")
 public class SubLevelDto {
 

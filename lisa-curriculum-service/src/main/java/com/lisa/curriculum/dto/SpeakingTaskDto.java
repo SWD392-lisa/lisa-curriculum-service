@@ -6,6 +6,8 @@ import lombok.Builder;
 import lombok.Data;
 
 @Data @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 @Schema(description = "Một speaking task trong sub-level")
 public class SpeakingTaskDto {
 

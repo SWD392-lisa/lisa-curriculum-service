@@ -21,6 +21,12 @@ public class GlobalExceptionHandler {
                 .body(Map.of("error", "Parse failed: " + e.getMessage()));
     }
 
+    @ExceptionHandler(ImportValidationException.class)
+    public ResponseEntity<?> handleImportValidation(ImportValidationException e) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(Map.of("error", e.getMessage()));
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<?> handleBadArg(IllegalArgumentException e) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)

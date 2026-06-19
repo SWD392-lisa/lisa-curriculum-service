@@ -7,6 +7,8 @@ import lombok.Data;
 import java.util.List;
 
 @Data @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 @Schema(description = "Một level trong hệ thống curriculum LISA")
 public class LevelDto {
 

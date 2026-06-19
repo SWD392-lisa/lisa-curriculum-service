@@ -12,7 +12,7 @@ spring:
       path: /h2-console
   jpa:
     hibernate:
-      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:create-drop}
+      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:validate}
     show-sql: false
     properties:
       hibernate:
@@ -48,3 +48,21 @@ springdoc:
     operations-sorter: alpha
     display-request-duration: true
     try-it-out-enabled: true    # bật nút "Try it out" mặc định
+
+# ── LMS Security / JWT Configuration ─────────────────────────
+lms:
+  security:
+    jwt:
+      secret: ${JWT_SECRET:8vOvSRycvAEBW/EDujcErz8UmfN70KGZZGKqfSuX7goQ1db0sPBwU1ICfogYXuy8QdOKRih5DEYOvMq1PL4Acg==}
+      issuer: ${JWT_ISSUER:ProjectLucy.API}
+      audience: ${JWT_AUDIENCE:ProjectLucy.Client}
+    role-id-map:
+      "1": "ROLE_USER"
+      "2": "ROLE_MENTOR"
+      "3": "ROLE_CREATOR"
+      "4": "ROLE_ADMIN"
+
+# ── LMS Session Configuration ───────────────────────────────
+lms:
+  session:
+    end-session-on-last-sublevel: ${END_SESSION_ON_LAST_SUBLEVEL:false}
