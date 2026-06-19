@@ -67,6 +67,20 @@ public class RoomSessionController {
         return ResponseEntity.ok(sessionService.switchToSubLevel(sessionId, request.getSubLevelId(), "Mentor manual sub-level select override"));
     }
 
+    @PostMapping("/room-sessions/{sessionId}/realtime-binding")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MENTOR', 'CREATOR')")
+    public ResponseEntity<RoomSessionResponseDto> bindRealtimeRoom(
+            @PathVariable UUID sessionId,
+            @Valid @RequestBody RealtimeRoomBindingRequestDto request) {
+        return ResponseEntity.ok(sessionService.bindRealtimeRoom(sessionId, request));
+    }
+
+    @DeleteMapping("/room-sessions/{sessionId}/realtime-binding")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MENTOR', 'CREATOR')")
+    public ResponseEntity<RoomSessionResponseDto> unbindRealtimeRoom(@PathVariable UUID sessionId) {
+        return ResponseEntity.ok(sessionService.unbindRealtimeRoom(sessionId));
+    }
+
     @PostMapping("/room-sessions/{sessionId}/pinned-materials")
     @PreAuthorize("hasAnyRole('ADMIN', 'MENTOR', 'CREATOR')")
     public ResponseEntity<RoomSessionStateDto.PinnedMaterialDto> pinMaterial(

@@ -15,4 +15,6 @@ public class RoomSessionResponseDto {
     private String status;
     private Long levelId;
     private Long currentSubLevelId;
+    private String realtimeRoomId;
+    private String realtimeAgoraChannelName;
 }

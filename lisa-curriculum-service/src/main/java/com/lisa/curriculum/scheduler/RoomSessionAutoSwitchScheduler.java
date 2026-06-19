@@ -27,7 +27,7 @@ public class RoomSessionAutoSwitchScheduler {
     private final SubLevelRepository subLevelRepo;
     private final RoomLearningSessionService sessionService;
 
-    @Scheduled(fixedDelay = 60000)
+    @Scheduled(fixedDelayString = "${lms.session.auto-switch-scan-interval-ms:60000}")
     public void scanAndAutoSwitchRooms() {
         log.debug("Auto-switch scanner started...");
         List<RoomLearningSession> liveSessions = sessionRepo.findByStatusAndAutoSwitchEnabledTrue(SessionStatus.LIVE);

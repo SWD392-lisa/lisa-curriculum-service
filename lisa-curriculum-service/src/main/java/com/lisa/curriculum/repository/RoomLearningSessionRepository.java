@@ -13,5 +13,6 @@ public interface RoomLearningSessionRepository extends JpaRepository<RoomLearnin
     List<RoomLearningSession> findByStatusAndAutoSwitchEnabledTrue(SessionStatus status);
     long countByMentorUserIdAndStatus(String mentorUserId, SessionStatus status);
     long countByMentorUserId(String mentorUserId);
+    List<RoomLearningSession> findByMentorUserId(String mentorUserId);
     List<RoomLearningSession> findByMentorUserIdAndStatusNot(String mentorUserId, SessionStatus status);
 }

@@ -10,6 +10,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.http.MediaType;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.test.web.servlet.MockMvc;
@@ -50,6 +52,9 @@ class RoomSessionIntegrationTest {
 
     @Autowired
     private com.lisa.curriculum.scheduler.RoomSessionAutoSwitchScheduler autoSwitchScheduler;
+
+    @Autowired
+    private CacheManager cacheManager;
 
     private Long testLevelId;
     private Long subLevel1Id;
@@ -287,5 +292,37 @@ class RoomSessionIntegrationTest {
 
         RoomLearningSession updated = sessionRepo.findById(session.getId()).orElseThrow();
         assertThat(updated.getCurrentSubLevelId()).isEqualTo(subLevel2Id);
+    }
+
+    @Test
+    @DisplayName("Room state cache is evicted after session mutation")
+    void testRoomStateCacheEvictedOnSwitch() throws Exception {
+        String token = generateToken("MENTOR-123", "mentor@lisa.com", "Mentor John", "2");
+
+        UUID sessionId = UUID.randomUUID();
+        RoomLearningSession session = RoomLearningSession.builder()
+                .id(sessionId)
+                .channelName("lms-" + sessionId)
+                .mentorUserId("MENTOR-123")
+                .levelId(testLevelId)
+                .currentSubLevelId(subLevel1Id)
+                .status(SessionStatus.LIVE)
+                .autoSwitchEnabled(true)
+                .build();
+        sessionRepo.save(session);
+
+        mockMvc.perform(get("/api/lms/room-sessions/" + sessionId + "/state")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk());
+
+        Cache cache = cacheManager.getCache("room_state");
+        assertThat(cache).isNotNull();
+        assertThat(cache.get(sessionId)).isNotNull();
+
+        mockMvc.perform(post("/api/lms/room-sessions/" + sessionId + "/switch-next")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk());
+
+        assertThat(cache.get(sessionId)).isNull();
     }
 }

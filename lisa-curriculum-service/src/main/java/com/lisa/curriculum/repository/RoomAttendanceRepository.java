@@ -6,12 +6,15 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 @Repository
 public interface RoomAttendanceRepository extends JpaRepository<RoomAttendance, Long> {
     Optional<RoomAttendance> findFirstByRoomSessionIdAndLearnerUserIdAndLeftAtIsNullOrderByJoinedAtDesc(UUID roomSessionId, String learnerUserId);
+    List<RoomAttendance> findByRoomSessionIdIn(Collection<UUID> roomSessionIds);
 
     @Query("SELECT COUNT(DISTINCT ra.learnerUserId) FROM RoomAttendance ra WHERE ra.roomSessionId IN (SELECT s.id FROM RoomLearningSession s WHERE s.mentorUserId = :mentorId)")
     long countDistinctLearnersForMentor(String mentorId);

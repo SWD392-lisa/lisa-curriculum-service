@@ -21,6 +21,12 @@ public class RoomLearningSession {
     @Column(name = "channel_name", nullable = false)
     private String channelName;
 
+    @Column(name = "realtime_room_id")
+    private String realtimeRoomId;
+
+    @Column(name = "realtime_agora_channel_name")
+    private String realtimeAgoraChannelName;
+
     @Column(name = "mentor_user_id", nullable = false)
     private String mentorUserId;
 

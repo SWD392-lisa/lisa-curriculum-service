@@ -9,10 +9,12 @@ import com.lisa.curriculum.security.LmsUserPrincipal;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -28,9 +30,19 @@ public class RoomLearningSessionService {
     private final PinnedMaterialRepository pinnedMaterialRepo;
     private final LevelRepository levelRepo;
     private final SubLevelRepository subLevelRepo;
+    private final LmsCacheService cacheService;
 
     @Value("${lms.session.end-session-on-last-sublevel:false}")
     private boolean endSessionOnLastSublevel;
+
+    @Value("${lms.session.realtime-session-join-event:session.join}")
+    private String realtimeSessionJoinEvent;
+
+    @Value("${lms.integration.realtime-service-base-url:}")
+    private String realtimeServiceBaseUrl;
+
+    @Value("${lms.integration.realtime-socket-url:}")
+    private String realtimeSocketUrl;
 
     @Transactional
     @CacheEvict(value = "mentor_dashboard", allEntries = true)
@@ -68,6 +80,7 @@ public class RoomLearningSessionService {
                 .build();
 
         session = sessionRepo.save(session);
+        cacheService.evictMentorDashboard(session.getMentorUserId());
 
         return mapToResponseDto(session);
     }
@@ -86,6 +99,8 @@ public class RoomLearningSessionService {
         session.setUpdatedAt(Instant.now());
 
         session = sessionRepo.save(session);
+        cacheService.evictRoomState(sessionId);
+        cacheService.evictRecordings(sessionId);
         return mapToResponseDto(session);
     }
 
@@ -101,6 +116,8 @@ public class RoomLearningSessionService {
         session.setUpdatedAt(Instant.now());
 
         session = sessionRepo.save(session);
+        cacheService.evictRoomState(sessionId);
+        cacheService.evictRecordings(sessionId);
         return mapToResponseDto(session);
     }
 
@@ -117,9 +134,12 @@ public class RoomLearningSessionService {
         session.setUpdatedAt(Instant.now());
 
         session = sessionRepo.save(session);
+        cacheService.evictRoomState(sessionId);
+        cacheService.evictRecordings(sessionId);
         return mapToResponseDto(session);
     }
 
+    @Cacheable(value = "room_state", key = "#sessionId")
     @Transactional(readOnly = true)
     public RoomSessionStateDto getState(UUID sessionId) {
         RoomLearningSession session = sessionRepo.findById(sessionId)
@@ -156,15 +176,25 @@ public class RoomLearningSessionService {
                 .collect(Collectors.toList());
 
         Map<String, Object> realtimeMeta = new LinkedHashMap<>();
-        realtimeMeta.put("socketEvent", "session.join");
+        realtimeMeta.put("socketEvent", realtimeSessionJoinEvent);
         realtimeMeta.put("sessionId", sessionId.toString());
-        realtimeMeta.put("channelName", session.getChannelName());
-        realtimeMeta.put("note", "Frontend connects directly to Realtime Socket.IO");
+        realtimeMeta.put("lmsChannelName", session.getChannelName());
+        realtimeMeta.put("roomId", session.getRealtimeRoomId());
+        realtimeMeta.put("agoraChannelName", session.getRealtimeAgoraChannelName());
+        realtimeMeta.put("baseUrl", realtimeServiceBaseUrl);
+        realtimeMeta.put("socketUrl", realtimeSocketUrl);
+        realtimeMeta.put("bindEndpoint", "/api/lms/room-sessions/" + sessionId + "/realtime-binding");
+        realtimeMeta.put("roomLookupEndpointTemplate", realtimeServiceBaseUrl + "/rooms/{roomId}");
+        realtimeMeta.put("participantsEndpointTemplate", realtimeServiceBaseUrl + "/rooms/{roomId}/participants");
+        realtimeMeta.put("mappingStatus", session.getRealtimeRoomId() == null ? "UNBOUND" : "BOUND");
+        realtimeMeta.put("note", "LMS stores explicit Realtime room binding because Realtime roomId is generated independently.");
 
         return RoomSessionStateDto.builder()
                 .sessionId(sessionId)
                 .channelName(session.getChannelName())
                 .status(session.getStatus().name())
+                .realtimeRoomId(session.getRealtimeRoomId())
+                .realtimeAgoraChannelName(session.getRealtimeAgoraChannelName())
                 .levelSummary(RoomSessionStateDto.LevelSummaryDto.builder()
                         .id(level.getId())
                         .language(level.getLanguage().name())
@@ -248,6 +278,8 @@ public class RoomLearningSessionService {
 
         session.setUpdatedAt(Instant.now());
         session = sessionRepo.save(session);
+        cacheService.evictRoomState(sessionId);
+        cacheService.evictRecordings(sessionId);
         return mapToResponseDto(session);
     }
 
@@ -273,6 +305,44 @@ public class RoomLearningSessionService {
         log.info("Session {} switched to sublevel {} due to: {}", sessionId, targetSubLevelId, reason);
 
         session = sessionRepo.save(session);
+        cacheService.evictRoomState(sessionId);
+        cacheService.evictRecordings(sessionId);
+        return mapToResponseDto(session);
+    }
+
+    @Transactional
+    @CacheEvict(value = "mentor_dashboard", allEntries = true)
+    public RoomSessionResponseDto bindRealtimeRoom(UUID sessionId, RealtimeRoomBindingRequestDto request) {
+        RoomLearningSession session = sessionRepo.findById(sessionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Session not found: " + sessionId));
+
+        checkMentorPermission(session);
+
+        session.setRealtimeRoomId(request.getRealtimeRoomId().trim());
+        session.setRealtimeAgoraChannelName(normalizeOptional(request.getRealtimeAgoraChannelName()));
+        session.setUpdatedAt(Instant.now());
+
+        session = sessionRepo.save(session);
+        cacheService.evictRoomState(sessionId);
+        cacheService.evictRecordings(sessionId);
+        return mapToResponseDto(session);
+    }
+
+    @Transactional
+    @CacheEvict(value = "mentor_dashboard", allEntries = true)
+    public RoomSessionResponseDto unbindRealtimeRoom(UUID sessionId) {
+        RoomLearningSession session = sessionRepo.findById(sessionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Session not found: " + sessionId));
+
+        checkMentorPermission(session);
+
+        session.setRealtimeRoomId(null);
+        session.setRealtimeAgoraChannelName(null);
+        session.setUpdatedAt(Instant.now());
+
+        session = sessionRepo.save(session);
+        cacheService.evictRoomState(sessionId);
+        cacheService.evictRecordings(sessionId);
         return mapToResponseDto(session);
     }
 
@@ -295,6 +365,12 @@ public class RoomLearningSessionService {
                 .status(session.getStatus().name())
                 .levelId(session.getLevelId())
                 .currentSubLevelId(session.getCurrentSubLevelId())
+                .realtimeRoomId(session.getRealtimeRoomId())
+                .realtimeAgoraChannelName(session.getRealtimeAgoraChannelName())
                 .build();
+    }
+
+    private String normalizeOptional(String value) {
+        return StringUtils.hasText(value) ? value.trim() : null;
     }
 }

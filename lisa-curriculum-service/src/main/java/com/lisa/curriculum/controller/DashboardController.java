@@ -65,17 +65,40 @@ public class DashboardController {
     @Operation(summary = "Lấy dashboard của mentor")
     public ResponseEntity<MentorDashboardResponseDto> getMentorDashboard(
             @RequestParam(required = false) String mentorId) {
+        return ResponseEntity.ok(dashboardService.getMentorDashboard(resolveMentorId(mentorId)));
+    }
 
+    @GetMapping("/mentor/dashboard/learners")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MENTOR', 'CREATOR')")
+    @Operation(summary = "Lấy danh sách learner progress cho mentor")
+    public ResponseEntity<List<MentorLearnerProgressDto>> getMentorLearners(
+            @RequestParam(required = false) String mentorId) {
+        return ResponseEntity.ok(dashboardService.getMentorLearners(resolveMentorId(mentorId)));
+    }
+
+    @GetMapping("/mentor/dashboard/sessions")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MENTOR', 'CREATOR')")
+    @Operation(summary = "Lấy danh sách sessions cho mentor")
+    public ResponseEntity<List<MentorSessionDashboardDto>> getMentorSessions(
+            @RequestParam(required = false) String mentorId) {
+        return ResponseEntity.ok(dashboardService.getMentorSessions(resolveMentorId(mentorId)));
+    }
+
+    @GetMapping("/mentor/dashboard/recordings")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MENTOR', 'CREATOR')")
+    @Operation(summary = "Lấy danh sách recordings cho mentor")
+    public ResponseEntity<List<SessionRecordingDto>> getMentorRecordings(
+            @RequestParam(required = false) String mentorId) {
+        return ResponseEntity.ok(dashboardService.getMentorRecordings(resolveMentorId(mentorId)));
+    }
+
+    private String resolveMentorId(String requestedMentorId) {
         LmsUserPrincipal currentUser = CurrentUserHelper.getCurrentUser();
-        String targetMentorId = mentorId;
-
         boolean isAdmin = currentUser != null && currentUser.getAuthorities().stream()
                 .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
-
-        if (!isAdmin || targetMentorId == null) {
-            targetMentorId = currentUser != null ? currentUser.getUserId() : "SYSTEM";
+        if (isAdmin && requestedMentorId != null && !requestedMentorId.isBlank()) {
+            return requestedMentorId;
         }
-
-        return ResponseEntity.ok(dashboardService.getMentorDashboard(targetMentorId));
+        return currentUser != null ? currentUser.getUserId() : "SYSTEM";
     }
 }

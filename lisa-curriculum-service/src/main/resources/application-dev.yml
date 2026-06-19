@@ -1,0 +1,28 @@
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/lisadb}
+    username: ${SPRING_DATASOURCE_USERNAME:lisa}
+    password: ${SPRING_DATASOURCE_PASSWORD:lisa_secret}
+    driver-class-name: ${DB_DRIVER:org.postgresql.Driver}
+  jpa:
+    hibernate:
+      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:validate}
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+  flyway:
+    enabled: ${SPRING_FLYWAY_ENABLED:true}
+  cache:
+    type: ${SPRING_CACHE_TYPE:simple}
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: ${MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE:health,info}

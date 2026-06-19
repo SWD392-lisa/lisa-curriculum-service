@@ -16,6 +16,8 @@ public class RoomSessionStateDto {
     private UUID sessionId;
     private String channelName;
     private String status;
+    private String realtimeRoomId;
+    private String realtimeAgoraChannelName;
     private LevelSummaryDto levelSummary;
     private SubLevelDto currentSubLevel;
     private Instant subLevelStartedAt;

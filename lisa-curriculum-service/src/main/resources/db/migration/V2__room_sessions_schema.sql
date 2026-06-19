@@ -5,6 +5,8 @@
 CREATE TABLE room_learning_sessions (
     id                     UUID PRIMARY KEY,
     channel_name           VARCHAR(255) NOT NULL,
+    realtime_room_id       VARCHAR(255),
+    realtime_agora_channel_name VARCHAR(255),
     mentor_user_id         VARCHAR(255) NOT NULL,
     level_id               BIGINT NOT NULL REFERENCES levels(id),
     current_sub_level_id   BIGINT NOT NULL REFERENCES sub_levels(id),
@@ -20,6 +22,7 @@ CREATE TABLE room_learning_sessions (
 
 CREATE INDEX idx_room_sessions_switch ON room_learning_sessions(status, auto_switch_enabled, sub_level_started_at);
 CREATE INDEX idx_room_sessions_mentor ON room_learning_sessions(mentor_user_id);
+CREATE UNIQUE INDEX idx_room_sessions_realtime_room_id ON room_learning_sessions(realtime_room_id) WHERE realtime_room_id IS NOT NULL;
 
 CREATE TABLE pinned_materials (
     id                     BIGSERIAL PRIMARY KEY,

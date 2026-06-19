@@ -9,7 +9,6 @@ import com.lisa.curriculum.repository.RoomLearningSessionRepository;
 import com.lisa.curriculum.security.CurrentUserHelper;
 import com.lisa.curriculum.security.LmsUserPrincipal;
 import lombok.RequiredArgsConstructor;
-import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,9 +24,9 @@ public class PinnedMaterialService {
 
     private final PinnedMaterialRepository pinnedMaterialRepo;
     private final RoomLearningSessionRepository sessionRepo;
+    private final LmsCacheService cacheService;
 
     @Transactional
-    @CacheEvict(value = "mentor_dashboard", allEntries = true)
     public PinnedMaterialDto pinMaterial(UUID sessionId, PinnedMaterialRequestDto request) {
         RoomLearningSession session = sessionRepo.findById(sessionId)
                 .orElseThrow(() -> new ResourceNotFoundException("Session not found: " + sessionId));
@@ -60,11 +59,12 @@ public class PinnedMaterialService {
                 .build();
 
         material = pinnedMaterialRepo.save(material);
+        cacheService.evictMentorDashboard(session.getMentorUserId());
+        cacheService.evictRoomState(sessionId);
         return mapToDto(material);
     }
 
     @Transactional
-    @CacheEvict(value = "mentor_dashboard", allEntries = true)
     public void unpinMaterial(Long materialId) {
         PinnedMaterial material = pinnedMaterialRepo.findById(materialId)
                 .orElseThrow(() -> new ResourceNotFoundException("Pinned material not found: " + materialId));
@@ -76,6 +76,8 @@ public class PinnedMaterialService {
 
         material.setActive(false);
         pinnedMaterialRepo.save(material);
+        cacheService.evictMentorDashboard(session.getMentorUserId());
+        cacheService.evictRoomState(session.getId());
     }
 
     @Transactional(readOnly = true)

@@ -22,11 +22,13 @@ public class CacheConfig {
 
     @Bean
     public RedisCacheManager cacheManager(RedisConnectionFactory connectionFactory) {
-        RedisCacheConfiguration defaultConfiguration = defaultCacheConfig(Duration.ofMinutes(10));
+        RedisCacheConfiguration defaultConfiguration = defaultCacheConfig(Duration.ofSeconds(60));
 
         Map<String, RedisCacheConfiguration> cacheConfigurations = new HashMap<>();
         cacheConfigurations.put("mentor_dashboard", defaultCacheConfig(Duration.ofSeconds(60)));
-        cacheConfigurations.put("learner_progress", defaultCacheConfig(Duration.ofSeconds(120)));
+        cacheConfigurations.put("room_state", defaultCacheConfig(Duration.ofSeconds(60)));
+        cacheConfigurations.put("recordings", defaultCacheConfig(Duration.ofSeconds(60)));
+        cacheConfigurations.put("learner_progress", defaultCacheConfig(Duration.ofSeconds(60)));
         cacheConfigurations.put("curriculum", defaultCacheConfig(Duration.ofMinutes(10)));
 
         return RedisCacheManager.builder(connectionFactory)

@@ -1,29 +1,19 @@
 spring:
+  config:
+    import: optional:file:.env[.properties]
   application:
     name: lisa-curriculum-service
-  datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:h2:mem:lisadb;DB_CLOSE_DELAY=-1}
-    username: ${SPRING_DATASOURCE_USERNAME:sa}
-    password: ${SPRING_DATASOURCE_PASSWORD:}
-    driver-class-name: ${DB_DRIVER:org.h2.Driver}
   h2:
     console:
-      enabled: true
+      enabled: ${SPRING_H2_CONSOLE_ENABLED:false}
       path: /h2-console
-  jpa:
-    hibernate:
-      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:validate}
-    show-sql: false
-    properties:
-      hibernate:
-        format_sql: true
   servlet:
     multipart:
       max-file-size: 20MB
       max-request-size: 20MB
 
 server:
-  port: 8080
+  port: ${SERVER_PORT:8080}
 
 management:
   endpoints:
@@ -49,20 +39,22 @@ springdoc:
     display-request-duration: true
     try-it-out-enabled: true    # bật nút "Try it out" mặc định
 
-# ── LMS Security / JWT Configuration ─────────────────────────
 lms:
   security:
     jwt:
-      secret: ${JWT_SECRET:8vOvSRycvAEBW/EDujcErz8UmfN70KGZZGKqfSuX7goQ1db0sPBwU1ICfogYXuy8QdOKRih5DEYOvMq1PL4Acg==}
-      issuer: ${JWT_ISSUER:ProjectLucy.API}
-      audience: ${JWT_AUDIENCE:ProjectLucy.Client}
+      secret: ${JWT_SECRET:MISSING_JWT_SECRET}
+      issuer: ${JWT_ISSUER:MISSING_JWT_ISSUER}
+      audience: ${JWT_AUDIENCE:MISSING_JWT_AUDIENCE}
     role-id-map:
-      "1": "ROLE_USER"
-      "2": "ROLE_MENTOR"
-      "3": "ROLE_CREATOR"
-      "4": "ROLE_ADMIN"
-
-# ── LMS Session Configuration ───────────────────────────────
-lms:
+      "${LMS_ROLE_ID_USER:1}": "ROLE_USER"
+      "${LMS_ROLE_ID_MENTOR:2}": "ROLE_MENTOR"
+      "${LMS_ROLE_ID_CREATOR:3}": "ROLE_CREATOR"
+      "${LMS_ROLE_ID_ADMIN:4}": "ROLE_ADMIN"
   session:
-    end-session-on-last-sublevel: ${END_SESSION_ON_LAST_SUBLEVEL:false}
+    end-session-on-last-sublevel: ${LMS_END_SESSION_ON_LAST_SUBLEVEL:false}
+    auto-switch-scan-interval-ms: ${LMS_AUTO_SWITCH_SCAN_INTERVAL_MS:60000}
+    realtime-session-join-event: ${REALTIME_SESSION_JOIN_EVENT:session.join}
+  integration:
+    user-service-base-url: ${USER_SERVICE_BASE_URL:MISSING_USER_SERVICE_BASE_URL}
+    realtime-service-base-url: ${REALTIME_SERVICE_BASE_URL:MISSING_REALTIME_SERVICE_BASE_URL}
+    realtime-socket-url: ${REALTIME_SOCKET_URL:MISSING_REALTIME_SOCKET_URL}

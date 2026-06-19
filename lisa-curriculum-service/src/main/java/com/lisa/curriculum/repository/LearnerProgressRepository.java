@@ -7,12 +7,15 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Collection;
 import java.util.Optional;
 
 @Repository
 public interface LearnerProgressRepository extends JpaRepository<LearnerProgress, Long> {
     List<LearnerProgress> findByLearnerUserId(String learnerUserId);
+    List<LearnerProgress> findByLearnerUserIdIn(Collection<String> learnerUserIds);
     Optional<LearnerProgress> findByLearnerUserIdAndSubLevelId(String learnerUserId, Long subLevelId);
+    List<LearnerProgress> findByLevelIdIn(Collection<Long> levelIds);
 
     @Query("SELECT COUNT(lp) FROM LearnerProgress lp WHERE lp.completed = true AND lp.levelId IN (SELECT DISTINCT s.levelId FROM RoomLearningSession s WHERE s.mentorUserId = :mentorId)")
     long countCompletedSubLevelsForMentor(String mentorId);
