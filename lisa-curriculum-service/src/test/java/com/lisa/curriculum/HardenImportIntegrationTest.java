@@ -32,8 +32,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import org.springframework.transaction.annotation.Transactional;
+
 @SpringBootTest(properties = {"spring.cache.type=simple"})
 @AutoConfigureMockMvc
+@Transactional
 class HardenImportIntegrationTest {
 
     @Autowired
@@ -358,4 +361,5 @@ class HardenImportIntegrationTest {
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isNotFound());
     }
+
 }

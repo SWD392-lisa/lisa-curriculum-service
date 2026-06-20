@@ -61,7 +61,7 @@ public class DashboardController {
     }
 
     @GetMapping("/mentor/dashboard")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MENTOR', 'CREATOR')")
+    @PreAuthorize("hasAnyRole('MENTOR', 'CREATOR')")
     @Operation(summary = "Lấy dashboard của mentor")
     public ResponseEntity<MentorDashboardResponseDto> getMentorDashboard(
             @RequestParam(required = false) String mentorId) {
@@ -69,7 +69,7 @@ public class DashboardController {
     }
 
     @GetMapping("/mentor/dashboard/learners")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MENTOR', 'CREATOR')")
+    @PreAuthorize("hasAnyRole('MENTOR', 'CREATOR')")
     @Operation(summary = "Lấy danh sách learner progress cho mentor")
     public ResponseEntity<List<MentorLearnerProgressDto>> getMentorLearners(
             @RequestParam(required = false) String mentorId) {
@@ -77,7 +77,7 @@ public class DashboardController {
     }
 
     @GetMapping("/mentor/dashboard/sessions")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MENTOR', 'CREATOR')")
+    @PreAuthorize("hasAnyRole('MENTOR', 'CREATOR')")
     @Operation(summary = "Lấy danh sách sessions cho mentor")
     public ResponseEntity<List<MentorSessionDashboardDto>> getMentorSessions(
             @RequestParam(required = false) String mentorId) {
@@ -85,7 +85,7 @@ public class DashboardController {
     }
 
     @GetMapping("/mentor/dashboard/recordings")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MENTOR', 'CREATOR')")
+    @PreAuthorize("hasAnyRole('MENTOR', 'CREATOR')")
     @Operation(summary = "Lấy danh sách recordings cho mentor")
     public ResponseEntity<List<SessionRecordingDto>> getMentorRecordings(
             @RequestParam(required = false) String mentorId) {
@@ -94,9 +94,10 @@ public class DashboardController {
 
     private String resolveMentorId(String requestedMentorId) {
         LmsUserPrincipal currentUser = CurrentUserHelper.getCurrentUser();
-        boolean isAdmin = currentUser != null && currentUser.getAuthorities().stream()
-                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
-        if (isAdmin && requestedMentorId != null && !requestedMentorId.isBlank()) {
+        // SUPER (role_id=3) → ROLE_CREATOR có thể xem dashboard của bất kỳ mentor nào
+        boolean isCreator = currentUser != null && currentUser.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_CREATOR"));
+        if (isCreator && requestedMentorId != null && !requestedMentorId.isBlank()) {
             return requestedMentorId;
         }
         return currentUser != null ? currentUser.getUserId() : "SYSTEM";

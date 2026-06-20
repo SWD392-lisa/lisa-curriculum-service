@@ -23,7 +23,7 @@ public class RecordingController {
     private final SessionRecordingService sessionRecordingService;
 
     @PostMapping({"/sessions/{sessionId}/recordings/start", "/recordings/sessions/{sessionId}/start"})
-    @PreAuthorize("hasAnyRole('ADMIN', 'CREATOR')")
+    @PreAuthorize("hasAnyRole('MENTOR', 'CREATOR')")
     @Operation(summary = "Start recording via Realtime audited contract")
     public ResponseEntity<SessionRecordingDto> startRecording(
             @PathVariable UUID sessionId,
@@ -32,7 +32,7 @@ public class RecordingController {
     }
 
     @PostMapping("/recordings/{recordingId}/stop")
-    @PreAuthorize("hasAnyRole('ADMIN', 'CREATOR')")
+    @PreAuthorize("hasAnyRole('MENTOR', 'CREATOR')")
     @Operation(summary = "Stop recording via Realtime audited contract")
     public ResponseEntity<SessionRecordingDto> stopRecording(
             @PathVariable String recordingId,

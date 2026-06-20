@@ -27,10 +27,16 @@ public class EnglishParser implements LanguageParser {
         int taskOrder = 0;
 
         for (XWPFParagraph para : document.getParagraphs()) {
-            String raw = para.getText().trim();
+            String raw = para.getText();
             if (raw.isEmpty()) continue;
             String text = raw.replaceAll("^[🔵🔹📘🎮⏱️🧩🎯✅\\*\\s]+", "").trim();
-            if (text.isEmpty()) continue;
+            if (text.isEmpty()) {
+                if (currentSubLevel != null) {
+                    currentSubLevel.addTask(SpeakingTask.builder()
+                            .taskType(TaskType.BULLET).content("").orderIndex(taskOrder++).build());
+                }
+                continue;
+            }
             boolean bold = isBold(para);
 
             Matcher gm = GROUP_PATTERN.matcher(text);

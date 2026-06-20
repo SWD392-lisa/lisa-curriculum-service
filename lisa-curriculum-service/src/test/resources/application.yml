@@ -1,0 +1,35 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;INIT=CREATE DOMAIN IF NOT EXISTS TIMESTAMPTZ AS TIMESTAMP WITH TIME ZONE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: 
+  cache:
+    type: simple
+  flyway:
+    enabled: false
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+
+lms:
+  security:
+    jwt:
+      secret: "8vOvSRycvAEBW/EDujcErz8UmfN70KGZZGKqfSuX7goQ1db0sPBwU1ICfogYXuy8QdOKRih5DEYOvMq1PL4Acg=="
+      issuer: "ProjectLucy.API"
+      audience: "ProjectLucy.Client"
+    role-id-map:
+      "1": "ROLE_USER"     # LUCY  → người dùng thường
+      "2": "ROLE_MENTOR"   # PRO   → gói Pro
+      "3": "ROLE_CREATOR"  # SUPER → gói Super, quyền cao nhất
+  session:
+    end-session-on-last-sublevel: false
+    auto-switch-scan-interval-ms: 60000
+    realtime-session-join-event: session.join
+  integration:
+    user-service-base-url: http://localhost:8081
+    realtime-service-base-url: http://localhost:8082
+    realtime-socket-url: http://localhost:8082

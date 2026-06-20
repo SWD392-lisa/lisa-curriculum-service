@@ -136,8 +136,8 @@ public class JapaneseParser implements LanguageParser {
     private int stageOf(int n) { return n <= 30 ? 1 : n <= 60 ? 2 : 3; }
 
     private String jlptOf(int n) {
-        if (n <= 15) return "N5"; if (n <= 30) return "N5+"; if (n <= 50) return "N4";
-        if (n <= 70) return "N4+"; if (n <= 85) return "N3"; return "N3+";
+        if (n <= 15) return "N5"; if (n <= 30) return "N5+"; if (n <= 45) return "N4";
+        if (n <= 60) return "N4+"; if (n <= 80) return "N3"; return "N3+";
     }
 
     private int durationOf(int n) { return n <= 30 ? 60 : n <= 60 ? 90 : 120; }

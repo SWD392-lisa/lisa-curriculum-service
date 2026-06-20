@@ -8,8 +8,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.http.MediaType;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.nio.charset.StandardCharsets;
@@ -131,9 +129,21 @@ class SecurityIntegrationTest {
     }
 
     @Test
+    @DisplayName("Token with unknown role ID returns 403")
+    void testUnknownRoleReturnsForbidden() throws Exception {
+        String token = generateToken("12345", "user@lisa.com", "User Name", "99", 
+                true, true, true, false);
+
+        mockMvc.perform(delete("/api/curriculum")
+                        .header("Authorization", "Bearer " + token)
+                        .param("language", "ENGLISH"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     @DisplayName("LmsUserPrincipal parse claims correctly in SecurityContext")
     void testPrincipalParsing() throws Exception {
-        String token = generateToken("USER-UUID-123", "test@lisa.com", "Test Display", "4", 
+        String token = generateToken("USER-UUID-123", "test@lisa.com", "Test Display", "3", 
                 true, true, true, false);
 
         mockMvc.perform(get("/api/curriculum/stats")
@@ -144,13 +154,13 @@ class SecurityIntegrationTest {
                 .userId("USER-UUID-123")
                 .email("test@lisa.com")
                 .displayName("Test Display")
-                .roleId("4")
+                .roleId("3")
                 .build();
 
         assertThat(principal.getUserId()).isEqualTo("USER-UUID-123");
         assertThat(principal.getEmail()).isEqualTo("test@lisa.com");
         assertThat(principal.getDisplayName()).isEqualTo("Test Display");
-        assertThat(principal.getRoleId()).isEqualTo("4");
+        assertThat(principal.getRoleId()).isEqualTo("3");
         assertThat(principal.getName()).isEqualTo("Test Display");
     }
 }

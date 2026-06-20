@@ -12,5 +12,10 @@ public class CreateRoomSessionRequestDto {
     @NotNull
     private Long levelId;
 
+    @Builder.Default
     private boolean autoSwitchEnabled = true;
+
+    private String realtimeRoomId;
+
+    private String realtimeAgoraChannelName;
 }

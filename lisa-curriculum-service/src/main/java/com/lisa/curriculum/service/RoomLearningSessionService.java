@@ -2,6 +2,7 @@ package com.lisa.curriculum.service;
 
 import com.lisa.curriculum.dto.*;
 import com.lisa.curriculum.entity.*;
+import com.lisa.curriculum.exception.InvalidSessionStateException;
 import com.lisa.curriculum.exception.ResourceNotFoundException;
 import com.lisa.curriculum.repository.*;
 import com.lisa.curriculum.security.CurrentUserHelper;
@@ -31,6 +32,8 @@ public class RoomLearningSessionService {
     private final LevelRepository levelRepo;
     private final SubLevelRepository subLevelRepo;
     private final LmsCacheService cacheService;
+    private final RoomAttendanceRepository roomAttendanceRepo;
+    private final RoomSessionSubLevelHistoryRepository subLevelHistoryRepo;
 
     @Value("${lms.session.end-session-on-last-sublevel:false}")
     private boolean endSessionOnLastSublevel;
@@ -46,7 +49,9 @@ public class RoomLearningSessionService {
 
     @Transactional
     @CacheEvict(value = "mentor_dashboard", allEntries = true)
-    public RoomSessionResponseDto createSession(Long levelId, boolean autoSwitchEnabled) {
+    public RoomSessionResponseDto createSession(CreateRoomSessionRequestDto request) {
+        Long levelId = request.getLevelId();
+        boolean autoSwitchEnabled = request.isAutoSwitchEnabled();
         Level level = levelRepo.findById(levelId)
                 .orElseThrow(() -> new ResourceNotFoundException("Level not found: " + levelId));
 
@@ -67,9 +72,12 @@ public class RoomLearningSessionService {
         String mentorId = currentUser != null ? currentUser.getUserId() : "SYSTEM";
 
         UUID sessionId = UUID.randomUUID();
+        String channelName = "lms-" + sessionId;
         RoomLearningSession session = RoomLearningSession.builder()
                 .id(sessionId)
-                .channelName("lms-" + sessionId)
+                .channelName(channelName)
+                .realtimeRoomId(normalizeOptional(request.getRealtimeRoomId()))
+                .realtimeAgoraChannelName(resolveRealtimeAgoraChannelName(request, channelName))
                 .mentorUserId(mentorId)
                 .levelId(levelId)
                 .currentSubLevelId(firstSubLevel.getId())
@@ -80,6 +88,7 @@ public class RoomLearningSessionService {
                 .build();
 
         session = sessionRepo.save(session);
+        writeSubLevelHistory(session.getId(), null, firstSubLevel.getId(), mentorId, SubLevelChangeSource.INIT, "Initial sub-level when session was created");
         cacheService.evictMentorDashboard(session.getMentorUserId());
 
         return mapToResponseDto(session);
@@ -92,6 +101,8 @@ public class RoomLearningSessionService {
                 .orElseThrow(() -> new ResourceNotFoundException("Session not found: " + sessionId));
 
         checkMentorPermission(session);
+        validateCurrentSubLevelBelongsToSessionLevel(session);
+        assertTransitionAllowed(session.getStatus(), SessionStatus.LIVE, sessionId);
 
         session.setStatus(SessionStatus.LIVE);
         session.setStartedAt(Instant.now());
@@ -111,6 +122,8 @@ public class RoomLearningSessionService {
                 .orElseThrow(() -> new ResourceNotFoundException("Session not found: " + sessionId));
 
         checkMentorPermission(session);
+        validateCurrentSubLevelBelongsToSessionLevel(session);
+        assertTransitionAllowed(session.getStatus(), SessionStatus.PAUSED, sessionId);
 
         session.setStatus(SessionStatus.PAUSED);
         session.setUpdatedAt(Instant.now());
@@ -128,6 +141,7 @@ public class RoomLearningSessionService {
                 .orElseThrow(() -> new ResourceNotFoundException("Session not found: " + sessionId));
 
         checkMentorPermission(session);
+        validateCurrentSubLevelBelongsToSessionLevel(session);
 
         session.setStatus(SessionStatus.ENDED);
         session.setEndedAt(Instant.now());
@@ -144,6 +158,7 @@ public class RoomLearningSessionService {
     public RoomSessionStateDto getState(UUID sessionId) {
         RoomLearningSession session = sessionRepo.findById(sessionId)
                 .orElseThrow(() -> new ResourceNotFoundException("Session not found: " + sessionId));
+        validateCurrentSubLevelBelongsToSessionLevel(session);
 
         Level level = levelRepo.findById(session.getLevelId())
                 .orElseThrow(() -> new ResourceNotFoundException("Level not found: " + session.getLevelId()));
@@ -153,13 +168,15 @@ public class RoomLearningSessionService {
 
         List<PinnedMaterial> materials = pinnedMaterialRepo.findByRoomSessionIdAndActiveTrueOrderByDisplayOrderAsc(sessionId);
 
+        int subLevelDuration = currentSubLevel.getDurationMinutes() > 0 ? currentSubLevel.getDurationMinutes() : 10;
+
         long secondsRemaining = 0;
         if (session.getStatus() == SessionStatus.LIVE && session.getSubLevelStartedAt() != null) {
             long elapsed = Duration.between(session.getSubLevelStartedAt(), Instant.now()).getSeconds();
-            long totalDurationSeconds = (long) currentSubLevel.getDurationMinutes() * 60;
+            long totalDurationSeconds = (long) subLevelDuration * 60;
             secondsRemaining = Math.max(0, totalDurationSeconds - elapsed);
         } else {
-            secondsRemaining = (long) currentSubLevel.getDurationMinutes() * 60;
+            secondsRemaining = (long) subLevelDuration * 60;
         }
 
         List<RoomSessionStateDto.PinnedMaterialDto> materialDtos = materials.stream()
@@ -189,12 +206,29 @@ public class RoomLearningSessionService {
         realtimeMeta.put("mappingStatus", session.getRealtimeRoomId() == null ? "UNBOUND" : "BOUND");
         realtimeMeta.put("note", "LMS stores explicit Realtime room binding because Realtime roomId is generated independently.");
 
+        LmsUserPrincipal principal = CurrentUserHelper.getCurrentUser();
+        boolean hasFullAccess = false;
+        if (principal != null) {
+            // SUPER (role_id=3) → ROLE_CREATOR là quyền cao nhất trong hệ thống
+            boolean isCreator = principal.getAuthorities() != null && principal.getAuthorities().stream()
+                    .anyMatch(a -> a.getAuthority().equals("ROLE_CREATOR"));
+            boolean isOwnerMentor = session.getMentorUserId() != null && session.getMentorUserId().equals(principal.getUserId());
+            boolean isJoinedLearner = roomAttendanceRepo.existsByRoomSessionIdAndLearnerUserId(sessionId, principal.getUserId());
+            if (isCreator || isOwnerMentor || isJoinedLearner) {
+                hasFullAccess = true;
+            }
+        }
+
+        if (!hasFullAccess) {
+            throw new AccessDeniedException("enrollmentValidationMode=LMS_ATTENDANCE_GUARD: learner must join session before viewing room state");
+        }
+
         return RoomSessionStateDto.builder()
                 .sessionId(sessionId)
                 .channelName(session.getChannelName())
                 .status(session.getStatus().name())
-                .realtimeRoomId(session.getRealtimeRoomId())
-                .realtimeAgoraChannelName(session.getRealtimeAgoraChannelName())
+                .realtimeRoomId(hasFullAccess ? session.getRealtimeRoomId() : null)
+                .realtimeAgoraChannelName(hasFullAccess ? session.getRealtimeAgoraChannelName() : null)
                 .levelSummary(RoomSessionStateDto.LevelSummaryDto.builder()
                         .id(level.getId())
                         .language(level.getLanguage().name())
@@ -222,8 +256,8 @@ public class RoomLearningSessionService {
                 .subLevelStartedAt(session.getSubLevelStartedAt())
                 .secondsRemaining(secondsRemaining)
                 .autoSwitchEnabled(session.isAutoSwitchEnabled())
-                .pinnedMaterials(materialDtos)
-                .realtime(realtimeMeta)
+                .pinnedMaterials(hasFullAccess ? materialDtos : Collections.emptyList())
+                .realtime(hasFullAccess ? realtimeMeta : null)
                 .build();
     }
 
@@ -234,12 +268,15 @@ public class RoomLearningSessionService {
                 .orElseThrow(() -> new ResourceNotFoundException("Session not found: " + sessionId));
 
         checkMentorPermission(session);
+        validateCurrentSubLevelBelongsToSessionLevel(session);
+        assertCanSwitchSubLevel(session);
 
         if (reason.contains("Auto-switch")) {
             SubLevel current = subLevelRepo.findById(session.getCurrentSubLevelId()).orElse(null);
             if (current != null && session.getSubLevelStartedAt() != null) {
                 long elapsedSeconds = Duration.between(session.getSubLevelStartedAt(), Instant.now()).getSeconds();
-                long totalDurationSeconds = (long) current.getDurationMinutes() * 60;
+                int durationMinutes = current.getDurationMinutes() > 0 ? current.getDurationMinutes() : 10;
+                long totalDurationSeconds = (long) durationMinutes * 60;
                 if (elapsedSeconds < totalDurationSeconds) {
                     log.info("Session {} was already switched by another instance. Ignoring duplicate auto-switch.", sessionId);
                     return mapToResponseDto(session);
@@ -260,7 +297,12 @@ public class RoomLearningSessionService {
             }
         }
 
-        if (currentIndex != -1 && currentIndex < subLevels.size() - 1) {
+        if (currentIndex == -1) {
+            throw new IllegalArgumentException("Current sub-level " + session.getCurrentSubLevelId() + " is not part of level " + session.getLevelId());
+        }
+
+        if (currentIndex < subLevels.size() - 1) {
+            Long fromSubLevelId = session.getCurrentSubLevelId();
             SubLevel nextSubLevel = subLevels.get(currentIndex + 1);
             session.setCurrentSubLevelId(nextSubLevel.getId());
             session.setSubLevelStartedAt(Instant.now());
@@ -278,6 +320,12 @@ public class RoomLearningSessionService {
 
         session.setUpdatedAt(Instant.now());
         session = sessionRepo.save(session);
+        if (currentIndex < subLevels.size() - 1) {
+            SubLevelChangeSource source = reason != null && reason.contains("Auto-switch")
+                    ? SubLevelChangeSource.AUTO
+                    : SubLevelChangeSource.MANUAL;
+            writeSubLevelHistory(sessionId, subLevels.get(currentIndex).getId(), session.getCurrentSubLevelId(), resolveCurrentUserId(), source, reason);
+        }
         cacheService.evictRoomState(sessionId);
         cacheService.evictRecordings(sessionId);
         return mapToResponseDto(session);
@@ -290,6 +338,8 @@ public class RoomLearningSessionService {
                 .orElseThrow(() -> new ResourceNotFoundException("Session not found: " + sessionId));
 
         checkMentorPermission(session);
+        validateCurrentSubLevelBelongsToSessionLevel(session);
+        assertCanSwitchSubLevel(session);
 
         SubLevel targetSubLevel = subLevelRepo.findById(targetSubLevelId)
                 .orElseThrow(() -> new ResourceNotFoundException("SubLevel not found: " + targetSubLevelId));
@@ -298,6 +348,7 @@ public class RoomLearningSessionService {
             throw new IllegalArgumentException("Target SubLevel " + targetSubLevelId + " does not belong to session Level " + session.getLevelId());
         }
 
+        Long fromSubLevelId = session.getCurrentSubLevelId();
         session.setCurrentSubLevelId(targetSubLevelId);
         session.setSubLevelStartedAt(Instant.now());
         session.setUpdatedAt(Instant.now());
@@ -305,6 +356,7 @@ public class RoomLearningSessionService {
         log.info("Session {} switched to sublevel {} due to: {}", sessionId, targetSubLevelId, reason);
 
         session = sessionRepo.save(session);
+        writeSubLevelHistory(sessionId, fromSubLevelId, targetSubLevelId, resolveCurrentUserId(), SubLevelChangeSource.MANUAL, reason);
         cacheService.evictRoomState(sessionId);
         cacheService.evictRecordings(sessionId);
         return mapToResponseDto(session);
@@ -317,6 +369,7 @@ public class RoomLearningSessionService {
                 .orElseThrow(() -> new ResourceNotFoundException("Session not found: " + sessionId));
 
         checkMentorPermission(session);
+        validateCurrentSubLevelBelongsToSessionLevel(session);
 
         session.setRealtimeRoomId(request.getRealtimeRoomId().trim());
         session.setRealtimeAgoraChannelName(normalizeOptional(request.getRealtimeAgoraChannelName()));
@@ -335,6 +388,7 @@ public class RoomLearningSessionService {
                 .orElseThrow(() -> new ResourceNotFoundException("Session not found: " + sessionId));
 
         checkMentorPermission(session);
+        validateCurrentSubLevelBelongsToSessionLevel(session);
 
         session.setRealtimeRoomId(null);
         session.setRealtimeAgoraChannelName(null);
@@ -351,11 +405,85 @@ public class RoomLearningSessionService {
         if (currentUser == null) {
             return; // bypass for system background schedules
         }
-        boolean isAdmin = currentUser.getAuthorities().stream()
-                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
-        if (!isAdmin && !session.getMentorUserId().equals(currentUser.getUserId())) {
+        // SUPER (role_id=3) → ROLE_CREATOR là quyền cao nhất, có thể manage mọi session
+        boolean isCreator = currentUser.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_CREATOR"));
+        if (!isCreator && !session.getMentorUserId().equals(currentUser.getUserId())) {
             throw new AccessDeniedException("Mentor is only allowed to manage their own sessions");
         }
+    }
+
+    @Transactional(readOnly = true)
+    public List<SubLevelHistoryDto> getSubLevelHistory(UUID sessionId) {
+        RoomLearningSession session = sessionRepo.findById(sessionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Session not found: " + sessionId));
+
+        LmsUserPrincipal currentUser = CurrentUserHelper.getCurrentUser();
+        boolean isOwnerMentor = currentUser != null && session.getMentorUserId().equals(currentUser.getUserId());
+        boolean isCreator = currentUser != null && currentUser.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_CREATOR"));
+        boolean isJoinedLearner = currentUser != null && roomAttendanceRepo.existsByRoomSessionIdAndLearnerUserId(sessionId, currentUser.getUserId());
+        if (!isOwnerMentor && !isCreator && !isJoinedLearner) {
+            throw new AccessDeniedException("enrollmentValidationMode=LMS_ATTENDANCE_GUARD: learner must join session before viewing sub-level history");
+        }
+
+        return subLevelHistoryRepo.findByRoomSessionIdOrderByChangedAtAscIdAsc(sessionId).stream()
+                .map(item -> SubLevelHistoryDto.builder()
+                        .id(item.getId())
+                        .roomSessionId(item.getRoomSessionId())
+                        .fromSubLevelId(item.getFromSubLevelId())
+                        .toSubLevelId(item.getToSubLevelId())
+                        .changedByUserId(item.getChangedByUserId())
+                        .changeSource(item.getChangeSource().name())
+                        .note(item.getNote())
+                        .changedAt(item.getChangedAt())
+                        .build())
+                .toList();
+    }
+
+    private void validateCurrentSubLevelBelongsToSessionLevel(RoomLearningSession session) {
+        if (!subLevelRepo.existsByIdAndLevelId(session.getCurrentSubLevelId(), session.getLevelId())) {
+            throw new IllegalArgumentException("Current sub-level " + session.getCurrentSubLevelId() + " does not belong to level " + session.getLevelId());
+        }
+    }
+
+    private void assertTransitionAllowed(SessionStatus currentStatus, SessionStatus targetStatus, UUID sessionId) {
+        if (currentStatus == SessionStatus.ENDED && (targetStatus == SessionStatus.LIVE || targetStatus == SessionStatus.PAUSED)) {
+            throw new InvalidSessionStateException("Session " + sessionId + " is ENDED and cannot transition to " + targetStatus);
+        }
+        if (currentStatus == SessionStatus.WAITING && targetStatus == SessionStatus.PAUSED) {
+            throw new InvalidSessionStateException("Session " + sessionId + " is WAITING and cannot transition to PAUSED");
+        }
+    }
+
+    private void assertCanSwitchSubLevel(RoomLearningSession session) {
+        if (session.getStatus() == SessionStatus.ENDED) {
+            throw new InvalidSessionStateException("Session " + session.getId() + " is ENDED and cannot switch sub-level");
+        }
+    }
+
+    private void writeSubLevelHistory(UUID sessionId, Long fromSubLevelId, Long toSubLevelId, String changedByUserId, SubLevelChangeSource source, String note) {
+        subLevelHistoryRepo.save(RoomSessionSubLevelHistory.builder()
+                .roomSessionId(sessionId)
+                .fromSubLevelId(fromSubLevelId)
+                .toSubLevelId(toSubLevelId)
+                .changedByUserId(changedByUserId)
+                .changeSource(source)
+                .note(note)
+                .changedAt(Instant.now())
+                .build());
+    }
+
+    private String resolveCurrentUserId() {
+        LmsUserPrincipal currentUser = CurrentUserHelper.getCurrentUser();
+        return currentUser != null ? currentUser.getUserId() : "SYSTEM";
+    }
+
+    private String resolveRealtimeAgoraChannelName(CreateRoomSessionRequestDto request, String defaultChannelName) {
+        String explicit = normalizeOptional(request.getRealtimeAgoraChannelName());
+        if (explicit != null) {
+            return explicit;
+        }
+        return normalizeOptional(request.getRealtimeRoomId()) != null ? defaultChannelName : null;
     }
 
     private RoomSessionResponseDto mapToResponseDto(RoomLearningSession session) {

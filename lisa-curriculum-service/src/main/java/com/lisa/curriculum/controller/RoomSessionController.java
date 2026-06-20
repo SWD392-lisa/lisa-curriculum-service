@@ -22,27 +22,27 @@ public class RoomSessionController {
     private final PinnedMaterialService pinnedMaterialService;
 
     @PostMapping("/room-sessions")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MENTOR', 'CREATOR')")
+    @PreAuthorize("hasAnyRole('MENTOR', 'CREATOR')")
     public ResponseEntity<RoomSessionResponseDto> createSession(
             @Valid @RequestBody CreateRoomSessionRequestDto request) {
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(sessionService.createSession(request.getLevelId(), request.isAutoSwitchEnabled()));
+                .body(sessionService.createSession(request));
     }
 
     @PostMapping("/room-sessions/{sessionId}/start")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MENTOR', 'CREATOR')")
+    @PreAuthorize("hasAnyRole('MENTOR', 'CREATOR')")
     public ResponseEntity<RoomSessionResponseDto> startSession(@PathVariable UUID sessionId) {
         return ResponseEntity.ok(sessionService.startSession(sessionId));
     }
 
     @PostMapping("/room-sessions/{sessionId}/pause")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MENTOR', 'CREATOR')")
+    @PreAuthorize("hasAnyRole('MENTOR', 'CREATOR')")
     public ResponseEntity<RoomSessionResponseDto> pauseSession(@PathVariable UUID sessionId) {
         return ResponseEntity.ok(sessionService.pauseSession(sessionId));
     }
 
     @PostMapping("/room-sessions/{sessionId}/end")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MENTOR', 'CREATOR')")
+    @PreAuthorize("hasAnyRole('MENTOR', 'CREATOR')")
     public ResponseEntity<RoomSessionResponseDto> endSession(@PathVariable UUID sessionId) {
         return ResponseEntity.ok(sessionService.endSession(sessionId));
     }
@@ -53,14 +53,20 @@ public class RoomSessionController {
         return ResponseEntity.ok(sessionService.getState(sessionId));
     }
 
+    @GetMapping("/room-sessions/{sessionId}/sub-level-history")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<List<SubLevelHistoryDto>> getSubLevelHistory(@PathVariable UUID sessionId) {
+        return ResponseEntity.ok(sessionService.getSubLevelHistory(sessionId));
+    }
+
     @PostMapping("/room-sessions/{sessionId}/switch-next")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MENTOR', 'CREATOR')")
+    @PreAuthorize("hasAnyRole('MENTOR', 'CREATOR')")
     public ResponseEntity<RoomSessionResponseDto> switchNext(@PathVariable UUID sessionId) {
         return ResponseEntity.ok(sessionService.switchToNextSubLevel(sessionId, "Mentor manual next sub-level override"));
     }
 
     @PostMapping("/room-sessions/{sessionId}/switch-sub-level")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MENTOR', 'CREATOR')")
+    @PreAuthorize("hasAnyRole('MENTOR', 'CREATOR')")
     public ResponseEntity<RoomSessionResponseDto> switchSubLevel(
             @PathVariable UUID sessionId,
             @Valid @RequestBody SwitchSubLevelRequestDto request) {
@@ -68,7 +74,7 @@ public class RoomSessionController {
     }
 
     @PostMapping("/room-sessions/{sessionId}/realtime-binding")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MENTOR', 'CREATOR')")
+    @PreAuthorize("hasAnyRole('MENTOR', 'CREATOR')")
     public ResponseEntity<RoomSessionResponseDto> bindRealtimeRoom(
             @PathVariable UUID sessionId,
             @Valid @RequestBody RealtimeRoomBindingRequestDto request) {
@@ -76,13 +82,13 @@ public class RoomSessionController {
     }
 
     @DeleteMapping("/room-sessions/{sessionId}/realtime-binding")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MENTOR', 'CREATOR')")
+    @PreAuthorize("hasAnyRole('MENTOR', 'CREATOR')")
     public ResponseEntity<RoomSessionResponseDto> unbindRealtimeRoom(@PathVariable UUID sessionId) {
         return ResponseEntity.ok(sessionService.unbindRealtimeRoom(sessionId));
     }
 
     @PostMapping("/room-sessions/{sessionId}/pinned-materials")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MENTOR', 'CREATOR')")
+    @PreAuthorize("hasAnyRole('MENTOR', 'CREATOR')")
     public ResponseEntity<RoomSessionStateDto.PinnedMaterialDto> pinMaterial(
             @PathVariable UUID sessionId,
             @Valid @RequestBody PinnedMaterialRequestDto request) {
@@ -98,7 +104,7 @@ public class RoomSessionController {
     }
 
     @DeleteMapping("/pinned-materials/{materialId}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MENTOR', 'CREATOR')")
+    @PreAuthorize("hasAnyRole('MENTOR', 'CREATOR')")
     public ResponseEntity<Void> unpinMaterial(@PathVariable Long materialId) {
         pinnedMaterialService.unpinMaterial(materialId);
         return ResponseEntity.noContent().build();

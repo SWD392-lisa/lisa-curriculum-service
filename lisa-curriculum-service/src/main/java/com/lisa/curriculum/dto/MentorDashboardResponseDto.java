@@ -20,6 +20,27 @@ public class MentorDashboardResponseDto {
     private RecordingsDto recordings;
     private ExternalStatusDto externalStatus;
 
+    // Direct root fields for alignment
+    private long activeRoomCount;
+    private long totalSessions;
+    private long learnersToday;
+    private double averageAttendanceMinutes;
+    private long completedSubLevels;
+    private List<MentorSessionDashboardDto> currentSessions;
+    private List<LevelProgressSummaryDto> progressSummaryByLevel;
+    private long pinnedMaterialCount;
+    private MissingExternalDataDto missingExternalData;
+
+    @Getter
+    @Setter
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class MissingExternalDataDto {
+        private boolean userProfileApi;
+        private boolean realtimePresenceApi;
+    }
+
     @Getter
     @Setter
     @Builder

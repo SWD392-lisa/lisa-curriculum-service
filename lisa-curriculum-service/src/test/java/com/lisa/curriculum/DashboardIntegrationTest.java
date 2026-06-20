@@ -143,6 +143,7 @@ class DashboardIntegrationTest {
                 .subLevelId(testSubLevelId)
                 .completed(true)
                 .speakingSeconds(30)
+                .idempotencyKey("key-1")
                 .build();
 
         // 1. Post progress
@@ -170,12 +171,21 @@ class DashboardIntegrationTest {
 
         // 3. Post progress again (should accumulate seconds and evict cache)
         req.setSpeakingSeconds(15);
+        req.setIdempotencyKey("key-2");
         mockMvc.perform(post("/api/lms/learner-progress")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(req))
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.speakingSeconds").value(45)); // accumulated: 30 + 15 = 45
+
+        // 4. Retry the same request with the same idempotency key (should be no-op/idempotent)
+        mockMvc.perform(post("/api/lms/learner-progress")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req))
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.speakingSeconds").value(45)); // still 45
 
         // Verify cache evicted
         assertThat(cache.get("LEARNER-123")).isNull();
@@ -277,5 +287,55 @@ class DashboardIntegrationTest {
         Cache cache = cacheManager.getCache("mentor_dashboard");
         assertThat(cache).isNotNull();
         assertThat(cache.get("MENTOR-456")).isNotNull();
+    }
+
+    @Test
+    @DisplayName("User who never joined cannot view room state")
+    void testUserWhoNeverJoinedCannotViewRoomState() throws Exception {
+        String token = generateToken("LEARNER-404", "student@lisa.com", "1");
+
+        mockMvc.perform(get("/api/lms/room-sessions/" + testSessionId + "/state")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("User who never joined cannot submit progress when sessionId present")
+    void testUserWhoNeverJoinedCannotSubmitProgressForSession() throws Exception {
+        String token = generateToken("LEARNER-404", "student@lisa.com", "1");
+
+        LearnerProgressRequestDto req = LearnerProgressRequestDto.builder()
+                .sessionId(testSessionId)
+                .levelId(testLevelId)
+                .subLevelId(testSubLevelId)
+                .completed(true)
+                .speakingSeconds(10)
+                .build();
+
+        mockMvc.perform(post("/api/lms/learner-progress")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req))
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("Duplicate join does not create two active attendance rows")
+    void testDuplicateJoinDoesNotCreateTwoActiveAttendanceRows() throws Exception {
+        String token = generateToken("LEARNER-123", "student@lisa.com", "1");
+
+        mockMvc.perform(post("/api/lms/room-sessions/" + testSessionId + "/attendance/join")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/lms/room-sessions/" + testSessionId + "/attendance/join")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk());
+
+        assertThat(attendanceRepo.findAll().stream()
+                .filter(item -> item.getRoomSessionId().equals(testSessionId))
+                .filter(item -> item.getLearnerUserId().equals("LEARNER-123"))
+                .filter(item -> item.getLeftAt() == null)
+                .count()).isEqualTo(1);
     }
 }

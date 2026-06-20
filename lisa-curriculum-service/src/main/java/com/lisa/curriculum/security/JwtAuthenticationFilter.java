@@ -20,7 +20,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.Key;
-import java.util.Collections;
+import java.util.ArrayList;
 import java.util.List;
 
 @Slf4j
@@ -67,11 +67,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     mappedRole = jwtProperties.getRoleIdMap().get(roleId);
                 }
                 if (mappedRole == null) {
-                    mappedRole = "ROLE_UNKNOWN";
+                    log.warn("Unknown role: {}, rejecting request with 403", roleId);
+                    response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                    response.setContentType("application/json");
+                    response.getWriter().write("{\"error\": \"Forbidden\", \"message\": \"Unknown role ID: " + roleId + "\"}");
+                    return;
                 }
 
-                SimpleGrantedAuthority authority = new SimpleGrantedAuthority(mappedRole);
-                List<SimpleGrantedAuthority> authorities = Collections.singletonList(authority);
+                List<SimpleGrantedAuthority> authorities = buildAuthorities(mappedRole);
 
                 LmsUserPrincipal principal = LmsUserPrincipal.builder()
                         .userId(userId)
@@ -90,9 +93,25 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             }
         } catch (Exception e) {
             log.warn("JWT validation failed: {}", e.getMessage());
+            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            response.setContentType("application/json");
+            response.getWriter().write("{\"error\": \"Unauthorized\", \"message\": \"JWT validation failed: " + e.getMessage() + "\"}");
+            return;
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    private List<SimpleGrantedAuthority> buildAuthorities(String mappedRole) {
+        List<SimpleGrantedAuthority> authorities = new ArrayList<>();
+        authorities.add(new SimpleGrantedAuthority(mappedRole));
+        if ("ROLE_MENTOR".equals(mappedRole)) {
+            authorities.add(new SimpleGrantedAuthority("ROLE_PRO"));
+        }
+        if ("ROLE_CREATOR".equals(mappedRole)) {
+            authorities.add(new SimpleGrantedAuthority("ROLE_SUPER"));
+        }
+        return authorities;
     }
 
     private String getClaim(Claims claims, String... keys) {

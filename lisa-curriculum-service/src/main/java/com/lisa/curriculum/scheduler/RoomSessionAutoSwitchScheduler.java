@@ -44,7 +44,8 @@ public class RoomSessionAutoSwitchScheduler {
                 }
 
                 long elapsedSeconds = Duration.between(session.getSubLevelStartedAt(), Instant.now()).getSeconds();
-                long totalDurationSeconds = (long) subLevel.getDurationMinutes() * 60;
+                int durationMinutes = subLevel.getDurationMinutes() > 0 ? subLevel.getDurationMinutes() : 10;
+                long totalDurationSeconds = (long) durationMinutes * 60;
 
                 if (elapsedSeconds >= totalDurationSeconds) {
                     log.info("Auto-switch scanner detected expired sublevel for session {}. Elapsed: {}s, Allowed: {}s. Switching...", 

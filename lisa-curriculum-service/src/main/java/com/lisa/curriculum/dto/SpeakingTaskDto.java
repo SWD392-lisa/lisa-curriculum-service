@@ -2,8 +2,7 @@ package com.lisa.curriculum.dto;
 
 import com.lisa.curriculum.entity.TaskType;
 import io.swagger.v3.oas.annotations.media.Schema;
-import lombok.Builder;
-import lombok.Data;
+import lombok.*;
 
 @Data @Builder
 @NoArgsConstructor

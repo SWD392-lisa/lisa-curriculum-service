@@ -96,9 +96,10 @@ public class PinnedMaterialService {
         if (currentUser == null) {
             return;
         }
-        boolean isAdmin = currentUser.getAuthorities().stream()
-                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
-        if (!isAdmin && !session.getMentorUserId().equals(currentUser.getUserId())) {
+        // SUPER (role_id=3) → ROLE_CREATOR là quyền cao nhất, có thể manage mọi session
+        boolean isCreator = currentUser.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_CREATOR"));
+        if (!isCreator && !session.getMentorUserId().equals(currentUser.getUserId())) {
             throw new AccessDeniedException("Mentor is only allowed to manage their own sessions");
         }
     }

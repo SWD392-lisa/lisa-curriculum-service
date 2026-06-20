@@ -51,7 +51,7 @@ public class ChineseParser implements LanguageParser {
 
             // ANSWER: starts with 👉
             if (raw.startsWith("👉")) {
-                String answer = raw.substring(1).trim();
+                String answer = raw.substring(2).trim();
                 if (currentSubLevel == null) {
                     // create unnamed sub-level
                     subCounter++;

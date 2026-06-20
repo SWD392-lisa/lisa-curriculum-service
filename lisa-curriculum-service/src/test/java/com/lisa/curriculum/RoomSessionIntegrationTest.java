@@ -2,6 +2,7 @@ package com.lisa.curriculum;
 
 import com.lisa.curriculum.entity.*;
 import com.lisa.curriculum.repository.*;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.junit.jupiter.api.BeforeEach;
@@ -56,9 +57,17 @@ class RoomSessionIntegrationTest {
     @Autowired
     private CacheManager cacheManager;
 
+    @Autowired
+    private RoomSessionSubLevelHistoryRepository historyRepo;
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
     private Long testLevelId;
     private Long subLevel1Id;
     private Long subLevel2Id;
+    private Long otherLevelId;
+    private Long otherSubLevelId;
 
     private static final String SECRET = "8vOvSRycvAEBW/EDujcErz8UmfN70KGZZGKqfSuX7goQ1db0sPBwU1ICfogYXuy8QdOKRih5DEYOvMq1PL4Acg==";
     private static final String ISSUER = "ProjectLucy.API";
@@ -117,6 +126,26 @@ class RoomSessionIntegrationTest {
                 .build();
         sub2 = subLevelRepo.save(sub2);
         subLevel2Id = sub2.getId();
+
+        Level otherLevel = Level.builder()
+                .language(Language.ENGLISH)
+                .stage(1)
+                .levelNumber(2)
+                .title("ENGLISH LEVEL 2")
+                .cefrTarget("A1")
+                .durationMinutes(60)
+                .build();
+        otherLevel = levelRepo.save(otherLevel);
+        otherLevelId = otherLevel.getId();
+
+        SubLevel otherSub = SubLevel.builder()
+                .level(otherLevel)
+                .subNumber(1)
+                .topic("Other Topic")
+                .durationMinutes(10)
+                .build();
+        otherSub = subLevelRepo.save(otherSub);
+        otherSubLevelId = otherSub.getId();
     }
 
     @Test
@@ -324,5 +353,149 @@ class RoomSessionIntegrationTest {
                 .andExpect(status().isOk());
 
         assertThat(cache.get(sessionId)).isNull();
+    }
+
+    @Test
+    @DisplayName("Ended session cannot start again")
+    void testEndedSessionCannotStartAgain() throws Exception {
+        String token = generateToken("MENTOR-123", "mentor@lisa.com", "Mentor John", "2");
+        UUID sessionId = UUID.randomUUID();
+        sessionRepo.save(RoomLearningSession.builder()
+                .id(sessionId)
+                .channelName("lms-" + sessionId)
+                .mentorUserId("MENTOR-123")
+                .levelId(testLevelId)
+                .currentSubLevelId(subLevel1Id)
+                .status(SessionStatus.ENDED)
+                .autoSwitchEnabled(true)
+                .build());
+
+        mockMvc.perform(post("/api/lms/room-sessions/" + sessionId + "/start")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    @DisplayName("Waiting session cannot pause")
+    void testWaitingSessionCannotPause() throws Exception {
+        String token = generateToken("MENTOR-123", "mentor@lisa.com", "Mentor John", "2");
+        UUID sessionId = UUID.randomUUID();
+        sessionRepo.save(RoomLearningSession.builder()
+                .id(sessionId)
+                .channelName("lms-" + sessionId)
+                .mentorUserId("MENTOR-123")
+                .levelId(testLevelId)
+                .currentSubLevelId(subLevel1Id)
+                .status(SessionStatus.WAITING)
+                .autoSwitchEnabled(true)
+                .build());
+
+        mockMvc.perform(post("/api/lms/room-sessions/" + sessionId + "/pause")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    @DisplayName("Session cannot point current sub-level to another level")
+    void testSessionCannotPointToSubLevelOfAnotherLevel() throws Exception {
+        String token = generateToken("MENTOR-123", "mentor@lisa.com", "Mentor John", "2");
+        UUID sessionId = UUID.randomUUID();
+        sessionRepo.save(RoomLearningSession.builder()
+                .id(sessionId)
+                .channelName("lms-" + sessionId)
+                .mentorUserId("MENTOR-123")
+                .levelId(testLevelId)
+                .currentSubLevelId(otherSubLevelId)
+                .status(SessionStatus.WAITING)
+                .autoSwitchEnabled(true)
+                .build());
+
+        mockMvc.perform(post("/api/lms/room-sessions/" + sessionId + "/start")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("Create session stores realtime binding inline")
+    void testCreateSessionStoresRealtimeBinding() throws Exception {
+        String token = generateToken("MENTOR-123", "mentor@lisa.com", "Mentor John", "2");
+        String body = "{" +
+                "\"levelId\":" + testLevelId + "," +
+                "\"autoSwitchEnabled\":true," +
+                "\"realtimeRoomId\":\"room-abc\"" +
+                "}";
+
+        mockMvc.perform(post("/api/lms/room-sessions")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.realtimeRoomId").value("room-abc"))
+                .andExpect(jsonPath("$.realtimeAgoraChannelName").isNotEmpty());
+    }
+
+    @Test
+    @DisplayName("Manual switch writes history and API returns it")
+    void testManualSwitchWritesHistory() throws Exception {
+        String token = generateToken("MENTOR-123", "mentor@lisa.com", "Mentor John", "2");
+        UUID sessionId = UUID.randomUUID();
+        sessionRepo.save(RoomLearningSession.builder()
+                .id(sessionId)
+                .channelName("lms-" + sessionId)
+                .mentorUserId("MENTOR-123")
+                .levelId(testLevelId)
+                .currentSubLevelId(subLevel1Id)
+                .status(SessionStatus.LIVE)
+                .autoSwitchEnabled(true)
+                .build());
+        historyRepo.save(RoomSessionSubLevelHistory.builder()
+                .roomSessionId(sessionId)
+                .fromSubLevelId(null)
+                .toSubLevelId(subLevel1Id)
+                .changedByUserId("MENTOR-123")
+                .changeSource(SubLevelChangeSource.INIT)
+                .note("Initial")
+                .build());
+
+        mockMvc.perform(post("/api/lms/room-sessions/" + sessionId + "/switch-next")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.currentSubLevelId").value(subLevel2Id));
+
+        mockMvc.perform(get("/api/lms/room-sessions/" + sessionId + "/sub-level-history")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].changeSource").value("INIT"))
+                .andExpect(jsonPath("$[1].changeSource").value("MANUAL"));
+    }
+
+    @Test
+    @DisplayName("Auto switch writes history")
+    void testAutoSwitchWritesHistory() {
+        RoomLearningSession session = RoomLearningSession.builder()
+                .id(UUID.randomUUID())
+                .channelName("lms-autoswitch")
+                .mentorUserId("MENTOR-123")
+                .levelId(testLevelId)
+                .currentSubLevelId(subLevel1Id)
+                .status(SessionStatus.LIVE)
+                .autoSwitchEnabled(true)
+                .subLevelStartedAt(Instant.now().minus(java.time.Duration.ofMinutes(11)))
+                .build();
+        session = sessionRepo.save(session);
+        historyRepo.save(RoomSessionSubLevelHistory.builder()
+                .roomSessionId(session.getId())
+                .fromSubLevelId(null)
+                .toSubLevelId(subLevel1Id)
+                .changedByUserId("MENTOR-123")
+                .changeSource(SubLevelChangeSource.INIT)
+                .note("Initial")
+                .build());
+
+        autoSwitchScheduler.scanAndAutoSwitchRooms();
+
+        assertThat(historyRepo.findByRoomSessionIdOrderByChangedAtAscIdAsc(session.getId()))
+                .extracting(RoomSessionSubLevelHistory::getChangeSource)
+                .contains(SubLevelChangeSource.AUTO);
     }
 }

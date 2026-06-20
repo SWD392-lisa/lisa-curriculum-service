@@ -30,6 +30,13 @@ public class SecurityConfig {
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .csrf(csrf -> csrf.disable())
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .exceptionHandling(exceptions -> exceptions
+                .authenticationEntryPoint((request, response, authException) -> {
+                    response.setStatus(jakarta.servlet.http.HttpServletResponse.SC_UNAUTHORIZED);
+                    response.setContentType("application/json");
+                    response.getWriter().write("{\"error\": \"Unauthorized\", \"message\": \"Authentication is required\"}");
+                })
+            )
             .authorizeHttpRequests(auth -> auth
                 // Public actuator, swagger and openapi endpoints
                 .requestMatchers("/actuator/health", "/actuator/info").permitAll()
@@ -37,10 +44,10 @@ public class SecurityConfig {
                 // Public read API endpoints
                 .requestMatchers(HttpMethod.GET, "/api/curriculum/levels/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/curriculum/stats").permitAll()
-                // Protected import / delete / history endpoints (restricted to ADMIN, MENTOR, CREATOR roles)
-                .requestMatchers(HttpMethod.POST, "/api/curriculum/import").hasAnyRole("ADMIN", "MENTOR", "CREATOR")
-                .requestMatchers(HttpMethod.DELETE, "/api/curriculum").hasAnyRole("ADMIN", "MENTOR", "CREATOR")
-                .requestMatchers(HttpMethod.GET, "/api/curriculum/imports/**").hasAnyRole("ADMIN", "MENTOR", "CREATOR")
+                // Protected import / delete / history endpoints
+                .requestMatchers(HttpMethod.POST, "/api/curriculum/import").hasAnyRole("MENTOR", "CREATOR")
+                .requestMatchers(HttpMethod.DELETE, "/api/curriculum").hasAnyRole("MENTOR", "CREATOR")
+                .requestMatchers(HttpMethod.GET, "/api/curriculum/imports/**").hasAnyRole("MENTOR", "CREATOR")
                 // Any other request must be authenticated
                 .anyRequest().authenticated()
             )

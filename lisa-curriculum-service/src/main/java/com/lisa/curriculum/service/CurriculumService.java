@@ -300,6 +300,9 @@ public class CurriculumService {
 
             // Verify tasks have non-empty content
             for (SubLevel sl : level.getSubLevels()) {
+                if (sl.getDurationMinutes() < 10 || sl.getDurationMinutes() > 20) {
+                    throw new ImportValidationException("Level " + level.getLevelNumber() + " Sub-level " + sl.getSubNumber() + " duration_minutes must be between 10 and 20. Found: " + sl.getDurationMinutes());
+                }
                 if (sl.getTasks() != null) {
                     for (SpeakingTask task : sl.getTasks()) {
                         if (task.getContent() == null || task.getContent().trim().isEmpty()) {

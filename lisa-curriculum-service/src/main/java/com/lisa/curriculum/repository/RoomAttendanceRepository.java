@@ -15,6 +15,8 @@ import java.util.UUID;
 public interface RoomAttendanceRepository extends JpaRepository<RoomAttendance, Long> {
     Optional<RoomAttendance> findFirstByRoomSessionIdAndLearnerUserIdAndLeftAtIsNullOrderByJoinedAtDesc(UUID roomSessionId, String learnerUserId);
     List<RoomAttendance> findByRoomSessionIdIn(Collection<UUID> roomSessionIds);
+    boolean existsByRoomSessionIdAndLearnerUserId(UUID roomSessionId, String learnerUserId);
+    Optional<RoomAttendance> findFirstByRoomSessionIdAndLearnerUserIdOrderByJoinedAtDesc(UUID roomSessionId, String learnerUserId);
 
     @Query("SELECT COUNT(DISTINCT ra.learnerUserId) FROM RoomAttendance ra WHERE ra.roomSessionId IN (SELECT s.id FROM RoomLearningSession s WHERE s.mentorUserId = :mentorId)")
     long countDistinctLearnersForMentor(String mentorId);

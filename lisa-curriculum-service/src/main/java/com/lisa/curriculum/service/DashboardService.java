@@ -2,12 +2,15 @@ package com.lisa.curriculum.service;
 
 import com.lisa.curriculum.dto.*;
 import com.lisa.curriculum.entity.*;
+import com.lisa.curriculum.exception.InvalidSessionStateException;
 import com.lisa.curriculum.exception.ResourceNotFoundException;
 import com.lisa.curriculum.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,18 +38,30 @@ public class DashboardService {
     @Transactional
     public void recordAttendanceJoin(UUID sessionId, String learnerUserId) {
         RoomLearningSession session = getSession(sessionId);
+        if (session.getStatus() != SessionStatus.WAITING && session.getStatus() != SessionStatus.LIVE) {
+            throw new InvalidSessionStateException("Session " + sessionId + " must be WAITING or LIVE for learner join. Current status: " + session.getStatus());
+        }
 
         Optional<RoomAttendance> activeOpt = attendanceRepo
                 .findFirstByRoomSessionIdAndLearnerUserIdAndLeftAtIsNullOrderByJoinedAtDesc(sessionId, learnerUserId);
 
         if (activeOpt.isEmpty()) {
-            RoomAttendance attendance = RoomAttendance.builder()
-                    .roomSessionId(sessionId)
-                    .learnerUserId(learnerUserId)
-                    .joinedAt(Instant.now())
-                    .build();
-            attendanceRepo.save(attendance);
-            log.info("[Attendance] Learner {} joined session {}", learnerUserId, sessionId);
+            try {
+                RoomAttendance attendance = RoomAttendance.builder()
+                        .roomSessionId(sessionId)
+                        .learnerUserId(learnerUserId)
+                        .joinedAt(Instant.now())
+                        .build();
+                attendanceRepo.saveAndFlush(attendance);
+                log.info("[Attendance] Learner {} joined session {} enrollmentValidationMode=LMS_ATTENDANCE_GUARD", learnerUserId, sessionId);
+            } catch (DataIntegrityViolationException e) {
+                Optional<RoomAttendance> reread = attendanceRepo
+                        .findFirstByRoomSessionIdAndLearnerUserIdAndLeftAtIsNullOrderByJoinedAtDesc(sessionId, learnerUserId);
+                if (reread.isEmpty()) {
+                    throw e;
+                }
+                log.info("[Attendance] Concurrent join collapsed for learner {} session {} enrollmentValidationMode=LMS_ATTENDANCE_GUARD", learnerUserId, sessionId);
+            }
         }
 
         cacheService.evictLearnerProgress(learnerUserId);
@@ -58,14 +73,24 @@ public class DashboardService {
     public void recordAttendanceLeave(UUID sessionId, String learnerUserId) {
         RoomLearningSession session = getSession(sessionId);
 
-        RoomAttendance attendance = attendanceRepo
-                .findFirstByRoomSessionIdAndLearnerUserIdAndLeftAtIsNullOrderByJoinedAtDesc(sessionId, learnerUserId)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "No active attendance record found for user " + learnerUserId + " in session " + sessionId));
+        Optional<RoomAttendance> activeOpt = attendanceRepo
+                .findFirstByRoomSessionIdAndLearnerUserIdAndLeftAtIsNullOrderByJoinedAtDesc(sessionId, learnerUserId);
 
-        attendance.setLeftAt(Instant.now());
-        attendance.setTotalSeconds(Duration.between(attendance.getJoinedAt(), attendance.getLeftAt()).toSeconds());
-        attendanceRepo.save(attendance);
+        if (activeOpt.isPresent()) {
+            RoomAttendance attendance = activeOpt.get();
+            attendance.setLeftAt(Instant.now());
+            attendance.setTotalSeconds(Duration.between(attendance.getJoinedAt(), attendance.getLeftAt()).toSeconds());
+            attendanceRepo.save(attendance);
+        } else {
+            // Check if there is ANY record at all
+            Optional<RoomAttendance> anyOpt = attendanceRepo
+                    .findFirstByRoomSessionIdAndLearnerUserIdOrderByJoinedAtDesc(sessionId, learnerUserId);
+            if (anyOpt.isEmpty()) {
+                throw new ResourceNotFoundException(
+                        "No active attendance record found for user " + learnerUserId + " in session " + sessionId);
+            }
+            log.info("[Attendance] Learner {} already left session {} (no-op success)", learnerUserId, sessionId);
+        }
 
         cacheService.evictLearnerProgress(learnerUserId);
         cacheService.evictMentorDashboard(session.getMentorUserId());
@@ -74,6 +99,16 @@ public class DashboardService {
 
     @Transactional
     public LearnerProgressResponseDto saveLearnerProgress(String learnerUserId, LearnerProgressRequestDto dto) {
+        if (dto.getSessionId() != null) {
+            RoomLearningSession session = getSession(dto.getSessionId());
+            if (!attendanceRepo.existsByRoomSessionIdAndLearnerUserId(dto.getSessionId(), learnerUserId)) {
+                throw new AccessDeniedException("enrollmentValidationMode=LMS_ATTENDANCE_GUARD: learner must join session before submitting progress");
+            }
+            if (!subLevelRepository.existsByIdAndLevelId(dto.getSubLevelId(), session.getLevelId())) {
+                throw new IllegalArgumentException("Sub-level " + dto.getSubLevelId() + " does not belong to session level " + session.getLevelId());
+            }
+        }
+
         LearnerProgress progress = progressRepo.findByLearnerUserIdAndSubLevelId(learnerUserId, dto.getSubLevelId())
                 .orElseGet(() -> LearnerProgress.builder()
                         .learnerUserId(learnerUserId)
@@ -81,15 +116,32 @@ public class DashboardService {
                         .subLevelId(dto.getSubLevelId())
                         .build());
 
-        if (dto.isCompleted() && !progress.isCompleted()) {
-            progress.setCompleted(true);
-            progress.setCompletedAt(Instant.now());
-        } else if (!dto.isCompleted()) {
-            progress.setCompleted(false);
-            progress.setCompletedAt(null);
+        if (dto.getIdempotencyKey() != null && !dto.getIdempotencyKey().trim().isEmpty()) {
+            if (dto.getIdempotencyKey().equals(progress.getLastIdempotencyKey())) {
+                log.info("[Progress] Duplicate request detected for key {}. Returning existing progress.", dto.getIdempotencyKey());
+                return toLearnerProgressDto(progress);
+            }
+            if (dto.isCompleted() && !progress.isCompleted()) {
+                progress.setCompleted(true);
+                progress.setCompletedAt(Instant.now());
+            } else if (!dto.isCompleted()) {
+                progress.setCompleted(false);
+                progress.setCompletedAt(null);
+            }
+            progress.setSpeakingSeconds(progress.getSpeakingSeconds() + dto.getSpeakingSeconds());
+            progress.setLastIdempotencyKey(dto.getIdempotencyKey());
+        } else {
+            if (dto.isCompleted() && !progress.isCompleted()) {
+                progress.setCompleted(true);
+                progress.setCompletedAt(Instant.now());
+            } else if (!dto.isCompleted()) {
+                progress.setCompleted(false);
+                progress.setCompletedAt(null);
+            }
+            // Safe fallback: use max to prevent infinite accumulation on duplicate retries
+            progress.setSpeakingSeconds(Math.max(progress.getSpeakingSeconds(), dto.getSpeakingSeconds()));
         }
 
-        progress.setSpeakingSeconds(progress.getSpeakingSeconds() + dto.getSpeakingSeconds());
         progress.setUpdatedAt(Instant.now());
         progress = progressRepo.save(progress);
 
@@ -150,6 +202,18 @@ public class DashboardService {
                 .externalStatus(MentorDashboardResponseDto.ExternalStatusDto.builder()
                         .userProfileApiAvailable(false)
                         .realtimePresenceApiAvailable(false)
+                        .build())
+                .activeRoomCount(data.activeSessions.size())
+                .totalSessions(data.allSessions.size())
+                .learnersToday(activeLearnersToday)
+                .averageAttendanceMinutes(data.averageAttendanceMinutes)
+                .completedSubLevels(data.completedSubLevels)
+                .currentSessions(currentRooms)
+                .progressSummaryByLevel(data.progressByLevel)
+                .pinnedMaterialCount(data.pinnedMaterials.size())
+                .missingExternalData(MentorDashboardResponseDto.MissingExternalDataDto.builder()
+                        .userProfileApi(true)
+                        .realtimePresenceApi(true)
                         .build())
                 .build();
     }

@@ -46,10 +46,9 @@ lms:
       issuer: ${JWT_ISSUER:MISSING_JWT_ISSUER}
       audience: ${JWT_AUDIENCE:MISSING_JWT_AUDIENCE}
     role-id-map:
-      "${LMS_ROLE_ID_USER:1}": "ROLE_USER"
-      "${LMS_ROLE_ID_MENTOR:2}": "ROLE_MENTOR"
-      "${LMS_ROLE_ID_CREATOR:3}": "ROLE_CREATOR"
-      "${LMS_ROLE_ID_ADMIN:4}": "ROLE_ADMIN"
+      "${LMS_ROLE_ID_USER:1}": "ROLE_USER"     # role_id=1 LUCY   → người dùng thường
+      "${LMS_ROLE_ID_MENTOR:2}": "ROLE_MENTOR"  # role_id=2 PRO    → có thể dạy học
+      "${LMS_ROLE_ID_CREATOR:3}": "ROLE_CREATOR" # role_id=3 SUPER  → quyền cao nhất
   session:
     end-session-on-last-sublevel: ${LMS_END_SESSION_ON_LAST_SUBLEVEL:false}
     auto-switch-scan-interval-ms: ${LMS_AUTO_SWITCH_SCAN_INTERVAL_MS:60000}

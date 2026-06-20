@@ -7,7 +7,7 @@ import java.time.Instant;
 
 @Entity
 @Table(name = "learner_progress",
-       uniqueConstraints = @UniqueConstraint(columnNames = {"learner_user_id", "sub_level_id"}))
+       uniqueConstraints = @UniqueConstraint(columnNames = {"learner_user_id", "level_id", "sub_level_id"}))
 @Getter
 @Setter
 @NoArgsConstructor
@@ -36,6 +36,9 @@ public class LearnerProgress {
 
     @Column(name = "speaking_seconds", nullable = false)
     private int speakingSeconds;
+
+    @Column(name = "last_idempotency_key")
+    private String lastIdempotencyKey;
 
     @Builder.Default
     @Column(name = "updated_at", nullable = false)

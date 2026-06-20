@@ -2,8 +2,7 @@ package com.lisa.curriculum.dto;
 
 import com.lisa.curriculum.entity.Language;
 import io.swagger.v3.oas.annotations.media.Schema;
-import lombok.Builder;
-import lombok.Data;
+import lombok.*;
 import java.util.List;
 
 @Data @Builder
