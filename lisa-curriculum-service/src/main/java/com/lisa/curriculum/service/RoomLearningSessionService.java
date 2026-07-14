@@ -10,7 +10,6 @@ import com.lisa.curriculum.security.LmsUserPrincipal;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
@@ -104,9 +103,22 @@ public class RoomLearningSessionService {
         validateCurrentSubLevelBelongsToSessionLevel(session);
         assertTransitionAllowed(session.getStatus(), SessionStatus.LIVE, sessionId);
 
+        SessionStatus previousStatus = session.getStatus();
+        Long currentSubLevelId = session.getCurrentSubLevelId();
+        SubLevel currentSubLevel = subLevelRepo.findById(currentSubLevelId)
+                .orElseThrow(() -> new ResourceNotFoundException("SubLevel not found: " + currentSubLevelId));
         session.setStatus(SessionStatus.LIVE);
-        session.setStartedAt(Instant.now());
-        session.setSubLevelStartedAt(Instant.now());
+        if (session.getStartedAt() == null) {
+            session.setStartedAt(Instant.now());
+        }
+        if (session.getSubLevelStartedAt() == null || previousStatus == SessionStatus.WAITING) {
+            session.setSubLevelStartedAt(Instant.now());
+        } else if (session.getPausedSecondsRemaining() != null) {
+            long totalSeconds = (long) Math.max(currentSubLevel.getDurationMinutes(), 10) * 60;
+            long elapsedBeforePause = Math.max(0, totalSeconds - session.getPausedSecondsRemaining());
+            session.setSubLevelStartedAt(Instant.now().minusSeconds(elapsedBeforePause));
+        }
+        session.setPausedSecondsRemaining(null);
         session.setUpdatedAt(Instant.now());
 
         session = sessionRepo.save(session);
@@ -125,6 +137,10 @@ public class RoomLearningSessionService {
         validateCurrentSubLevelBelongsToSessionLevel(session);
         assertTransitionAllowed(session.getStatus(), SessionStatus.PAUSED, sessionId);
 
+        Long currentSubLevelId = session.getCurrentSubLevelId();
+        SubLevel currentSubLevel = subLevelRepo.findById(currentSubLevelId)
+                .orElseThrow(() -> new ResourceNotFoundException("SubLevel not found: " + currentSubLevelId));
+        session.setPausedSecondsRemaining(calculateSecondsRemaining(session, currentSubLevel));
         session.setStatus(SessionStatus.PAUSED);
         session.setUpdatedAt(Instant.now());
 
@@ -153,7 +169,6 @@ public class RoomLearningSessionService {
         return mapToResponseDto(session);
     }
 
-    @Cacheable(value = "room_state", key = "#sessionId")
     @Transactional(readOnly = true)
     public RoomSessionStateDto getState(UUID sessionId) {
         RoomLearningSession session = sessionRepo.findById(sessionId)
@@ -168,16 +183,9 @@ public class RoomLearningSessionService {
 
         List<PinnedMaterial> materials = pinnedMaterialRepo.findByRoomSessionIdAndActiveTrueOrderByDisplayOrderAsc(sessionId);
 
-        int subLevelDuration = currentSubLevel.getDurationMinutes() > 0 ? currentSubLevel.getDurationMinutes() : 10;
-
-        long secondsRemaining = 0;
-        if (session.getStatus() == SessionStatus.LIVE && session.getSubLevelStartedAt() != null) {
-            long elapsed = Duration.between(session.getSubLevelStartedAt(), Instant.now()).getSeconds();
-            long totalDurationSeconds = (long) subLevelDuration * 60;
-            secondsRemaining = Math.max(0, totalDurationSeconds - elapsed);
-        } else {
-            secondsRemaining = (long) subLevelDuration * 60;
-        }
+        long secondsRemaining = session.getStatus() == SessionStatus.PAUSED && session.getPausedSecondsRemaining() != null
+                ? Math.max(0, session.getPausedSecondsRemaining())
+                : calculateSecondsRemaining(session, currentSubLevel);
 
         List<RoomSessionStateDto.PinnedMaterialDto> materialDtos = materials.stream()
                 .map(m -> RoomSessionStateDto.PinnedMaterialDto.builder()
@@ -306,6 +314,7 @@ public class RoomLearningSessionService {
             SubLevel nextSubLevel = subLevels.get(currentIndex + 1);
             session.setCurrentSubLevelId(nextSubLevel.getId());
             session.setSubLevelStartedAt(Instant.now());
+            session.setPausedSecondsRemaining(null);
             log.info("Session {} auto-switched from sublevel {} to next sublevel {} due to: {}",
                     sessionId, subLevels.get(currentIndex).getId(), nextSubLevel.getId(), reason);
         } else {
@@ -351,6 +360,7 @@ public class RoomLearningSessionService {
         Long fromSubLevelId = session.getCurrentSubLevelId();
         session.setCurrentSubLevelId(targetSubLevelId);
         session.setSubLevelStartedAt(Instant.now());
+        session.setPausedSecondsRemaining(null);
         session.setUpdatedAt(Instant.now());
 
         log.info("Session {} switched to sublevel {} due to: {}", sessionId, targetSubLevelId, reason);
@@ -500,5 +510,14 @@ public class RoomLearningSessionService {
 
     private String normalizeOptional(String value) {
         return StringUtils.hasText(value) ? value.trim() : null;
+    }
+
+    private long calculateSecondsRemaining(RoomLearningSession session, SubLevel subLevel) {
+        long totalDurationSeconds = (long) Math.max(subLevel.getDurationMinutes(), 10) * 60;
+        if (session.getSubLevelStartedAt() == null || session.getStatus() != SessionStatus.LIVE) {
+            return totalDurationSeconds;
+        }
+        long elapsed = Duration.between(session.getSubLevelStartedAt(), Instant.now()).getSeconds();
+        return Math.max(0, totalDurationSeconds - elapsed);
     }
 }

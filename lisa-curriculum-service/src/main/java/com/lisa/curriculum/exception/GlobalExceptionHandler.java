@@ -39,6 +39,13 @@ public class GlobalExceptionHandler {
                 .body(Map.of("error", "Invalid session state transition", "message", e.getMessage()));
     }
 
+    @ExceptionHandler(AiProviderUnavailableException.class)
+    public ResponseEntity<?> handleAiUnavailable(AiProviderUnavailableException e) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(Map.of("error", "AI_PROVIDER_UNAVAILABLE",
+                        "message", "AI suggestions are temporarily unavailable."));
+    }
+
     @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
     public ResponseEntity<?> handleAccessDenied(org.springframework.security.access.AccessDeniedException e) {
         return ResponseEntity.status(HttpStatus.FORBIDDEN)

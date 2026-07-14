@@ -64,7 +64,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             if (userId != null) {
                 String mappedRole = null;
                 if (roleId != null) {
-                    mappedRole = jwtProperties.getRoleIdMap().get(roleId);
+                    mappedRole = resolveMappedRole(roleId);
                 }
                 if (mappedRole == null) {
                     log.warn("Unknown role: {}, rejecting request with 403", roleId);
@@ -112,6 +112,22 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             authorities.add(new SimpleGrantedAuthority("ROLE_SUPER"));
         }
         return authorities;
+    }
+
+    private String resolveMappedRole(String roleId) {
+        String configuredRole = jwtProperties.getRoleIdMap().get(roleId);
+        if (configuredRole != null && !configuredRole.isBlank()) {
+            return configuredRole;
+        }
+
+        // Keep authentication compatible with the shared ProjectLucy role IDs
+        // even when Spring cannot bind dynamic YAML map keys from environment variables.
+        return switch (roleId) {
+            case "1" -> "ROLE_USER";
+            case "2" -> "ROLE_MENTOR";
+            case "3" -> "ROLE_CREATOR";
+            default -> null;
+        };
     }
 
     private String getClaim(Claims claims, String... keys) {

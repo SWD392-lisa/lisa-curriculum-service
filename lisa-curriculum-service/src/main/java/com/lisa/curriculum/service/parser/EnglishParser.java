@@ -14,7 +14,7 @@ public class EnglishParser implements LanguageParser {
     private static final Pattern LEVEL_PATTERN =
             Pattern.compile("LEVEL\\s+(\\d+)\\s*[–\\-—]\\s*(.+)", Pattern.CASE_INSENSITIVE);
     private static final Pattern GROUP_PATTERN =
-            Pattern.compile("LEVEL\\s+\\d+[–\\-]\\d+\\s*[:–-]\\s*(.+)", Pattern.CASE_INSENSITIVE);
+            Pattern.compile("LEVELS?\\s+\\d+[–\\-]\\d+\\s*[:–-]\\s*(.+)", Pattern.CASE_INSENSITIVE);
     private static final Pattern SUBLEVEL_PATTERN =
             Pattern.compile("^(?:Sub-?level\\s*)?(\\d+)[:.)]\\s*(.+)", Pattern.CASE_INSENSITIVE);
 

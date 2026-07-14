@@ -13,6 +13,8 @@ spring:
         format_sql: true
   flyway:
     enabled: ${SPRING_FLYWAY_ENABLED:true}
+    baseline-on-migrate: true
+    baseline-version: 0
   cache:
     type: ${SPRING_CACHE_TYPE:simple}
   data:

@@ -38,6 +38,20 @@ services:
     networks:
       - lisa-net
 
+  redis:
+    image: redis:7-alpine
+    container_name: lisa-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - lisa-net
+
   # ── Curriculum Service ─────────────────────────────────────
   lisa-curriculum-service:
     build:
@@ -48,7 +62,10 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
+      SPRING_PROFILES_ACTIVE:                   dev
       SPRING_DATASOURCE_URL:                   jdbc:postgresql://postgres:5432/lisadb
       SPRING_DATASOURCE_USERNAME:              lisa
       SPRING_DATASOURCE_PASSWORD:              ${POSTGRES_PASSWORD:-lisa_secret}
@@ -56,6 +73,7 @@ services:
       SPRING_JPA_HIBERNATE_DDL_AUTO:           update
       SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT: org.hibernate.dialect.PostgreSQLDialect
       SPRING_H2_CONSOLE_ENABLED:              "false"
+      REDIS_HOST:                              redis
     ports:
       - "8080:8080"
     healthcheck:

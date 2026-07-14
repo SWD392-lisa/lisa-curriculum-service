@@ -57,3 +57,10 @@ lms:
     user-service-base-url: ${USER_SERVICE_BASE_URL:MISSING_USER_SERVICE_BASE_URL}
     realtime-service-base-url: ${REALTIME_SERVICE_BASE_URL:MISSING_REALTIME_SERVICE_BASE_URL}
     realtime-socket-url: ${REALTIME_SOCKET_URL:MISSING_REALTIME_SOCKET_URL}
+
+mimo:
+  base-url: ${MIMO_BASE_URL:}
+  api-key: ${MIMO_API_KEY:}
+  model: ${MIMO_MODEL:MiMo-V2-Flash}
+  timeout-ms: ${MIMO_TIMEOUT_MS:20000}
+  max-tokens: ${MIMO_MAX_TOKENS:500}

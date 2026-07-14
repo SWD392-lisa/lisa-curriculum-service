@@ -61,6 +61,12 @@ public class ChineseParser implements LanguageParser {
                     currentLevel.addSubLevel(currentSubLevel);
                     taskOrder = 0;
                 }
+                if (pendingQ != null) {
+                    currentSubLevel.addTask(SpeakingTask.builder()
+                            .taskType(TaskType.QUESTION).content(pendingQ).orderIndex(taskOrder++).build());
+                    pendingQ = null;
+                    expectQPinyin = false;
+                }
                 currentSubLevel.addTask(SpeakingTask.builder()
                         .taskType(TaskType.ANSWER).content(answer).orderIndex(taskOrder++).build());
                 expectQPinyin = false;

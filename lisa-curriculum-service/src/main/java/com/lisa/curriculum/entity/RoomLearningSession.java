@@ -46,6 +46,9 @@ public class RoomLearningSession {
     @Column(name = "sub_level_started_at")
     private Instant subLevelStartedAt;
 
+    @Column(name = "paused_seconds_remaining")
+    private Long pausedSecondsRemaining;
+
     @Column(name = "started_at")
     private Instant startedAt;
 

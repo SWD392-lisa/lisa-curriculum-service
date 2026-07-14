@@ -32,21 +32,24 @@ ALTER TABLE sub_levels
     ADD CONSTRAINT uq_sub_levels_id_level_id UNIQUE (id, level_id);
 
 UPDATE room_learning_sessions rls
-SET current_sub_level_id = replacement.id
-FROM LATERAL (
+SET current_sub_level_id = (
     SELECT sl.id
     FROM sub_levels sl
     WHERE sl.level_id = rls.level_id
     ORDER BY sl.sub_number ASC, sl.id ASC
     LIMIT 1
-) replacement
+)
 WHERE NOT EXISTS (
     SELECT 1
     FROM sub_levels sl
     WHERE sl.id = rls.current_sub_level_id
       AND sl.level_id = rls.level_id
 )
-AND replacement.id IS NOT NULL;
+AND EXISTS (
+    SELECT 1
+    FROM sub_levels sl
+    WHERE sl.level_id = rls.level_id
+);
 
 ALTER TABLE room_learning_sessions
     DROP CONSTRAINT IF EXISTS fk_room_sessions_level_sublevel;
