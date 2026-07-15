@@ -124,6 +124,8 @@ public class SessionRecordingService {
 
         entity.setRoomSessionId(sessionId);
         entity.setProvider(remote.provider);
+        entity.setStorageObjectKey(remote.storageObjectKey);
+        entity.setPodcastId(remote.podcastId);
         entity.setStatus(parseStatus(remote.status));
         entity.setDurationSeconds(remote.durationSeconds);
         entity.setCreatedAt(remote.createdAt != null ? remote.createdAt : entity.getCreatedAt());
@@ -154,6 +156,8 @@ public class SessionRecordingService {
                 .startedAt(entity.getStartedAt())
                 .endedAt(entity.getEndedAt())
                 .provider(entity.getProvider())
+                .storageObjectKey(entity.getStorageObjectKey())
+                .podcastId(entity.getPodcastId())
                 .build();
     }
 

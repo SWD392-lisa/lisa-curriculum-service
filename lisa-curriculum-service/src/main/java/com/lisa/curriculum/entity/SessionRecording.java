@@ -47,6 +47,12 @@ public class SessionRecording {
     @Column(name = "provider", length = 128)
     private String provider;
 
+    @Column(name = "storage_object_key", length = 2048)
+    private String storageObjectKey;
+
+    @Column(name = "podcast_id", length = 128)
+    private String podcastId;
+
     @PrePersist
     protected void onCreate() {
         Instant now = Instant.now();

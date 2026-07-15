@@ -41,6 +41,7 @@ public class SecurityConfig {
                 // Public actuator, swagger and openapi endpoints
                 .requestMatchers("/actuator/health", "/actuator/info").permitAll()
                 .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**", "/api-docs/**").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/lms/internal/recordings/events").permitAll()
                 // Public read API endpoints
                 .requestMatchers(HttpMethod.GET, "/api/curriculum/levels/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/curriculum/stats").permitAll()

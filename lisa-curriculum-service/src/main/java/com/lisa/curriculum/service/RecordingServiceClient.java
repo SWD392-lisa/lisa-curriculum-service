@@ -126,6 +126,8 @@ public class RecordingServiceClient {
         public Instant endedAt;
         public Instant createdAt;
         public Instant updatedAt;
+        public String storageObjectKey;
+        public String podcastId;
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

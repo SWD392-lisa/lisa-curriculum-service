@@ -33,6 +33,7 @@ public class DashboardService {
     private final PinnedMaterialRepository pinnedMaterialRepo;
     private final SessionRecordingRepository sessionRecordingRepository;
     private final SubLevelRepository subLevelRepository;
+    private final LevelRepository levelRepository;
     private final LmsCacheService cacheService;
 
     @Transactional
@@ -164,7 +165,7 @@ public class DashboardService {
     public MentorDashboardResponseDto getMentorDashboard(String mentorId) {
         MentorDataBundle data = buildMentorDataBundle(mentorId);
 
-        List<MentorSessionDashboardDto> currentRooms = buildCurrentRooms(data.activeSessions, data.subLevelMap, data.pinnedMaterials);
+        List<MentorSessionDashboardDto> currentRooms = buildCurrentRooms(data.activeSessions, data.subLevelMap, data.pinnedMaterials, loadLevelMap(data.allSessions));
         MentorDashboardResponseDto.CurrentSubLevelDto currentSubLevel =
                 currentRooms.isEmpty() ? null : toCurrentSubLevel(currentRooms.get(0), data.subLevelMap);
 
@@ -219,12 +220,18 @@ public class DashboardService {
     }
 
     @Transactional(readOnly = true)
-    public List<MentorLearnerProgressDto> getMentorLearners(String mentorId) {
+    public List<MentorLearnerProgressDto> getMentorLearners(String mentorId, UUID sessionId) {
         MentorDataBundle data = buildMentorDataBundle(mentorId);
         Map<String, MentorLearnerProgressDto.MentorLearnerProgressDtoBuilder> builders = new LinkedHashMap<>();
         Instant since = startOfTodayUtc();
+        RoomLearningSession scopedSession = sessionId == null ? null : sessionRepo.findById(sessionId).orElse(null);
+        Set<String> scopedLearners = scopedSession == null ? null : data.attendances.stream()
+                .filter(item -> item.getRoomSessionId().equals(sessionId))
+                .map(RoomAttendance::getLearnerUserId)
+                .collect(Collectors.toSet());
 
         for (RoomAttendance attendance : data.attendances) {
+            if (scopedSession != null && !attendance.getRoomSessionId().equals(sessionId)) continue;
             builders.computeIfAbsent(attendance.getLearnerUserId(), learnerId ->
                     MentorLearnerProgressDto.builder()
                             .learnerUserId(learnerId)
@@ -244,6 +251,8 @@ public class DashboardService {
         }
 
         for (LearnerProgress progress : data.progressEntries) {
+            if (scopedSession != null && (scopedLearners == null || !scopedLearners.contains(progress.getLearnerUserId())
+                    || !progress.getLevelId().equals(scopedSession.getLevelId()))) continue;
             builders.computeIfAbsent(progress.getLearnerUserId(), learnerId ->
                     MentorLearnerProgressDto.builder().learnerUserId(learnerId).activeToday(false));
             MentorLearnerProgressDto current = builders.get(progress.getLearnerUserId()).build();
@@ -264,7 +273,7 @@ public class DashboardService {
     @Transactional(readOnly = true)
     public List<MentorSessionDashboardDto> getMentorSessions(String mentorId) {
         MentorDataBundle data = buildMentorDataBundle(mentorId);
-        return buildCurrentRooms(data.allSessions, data.subLevelMap, data.pinnedMaterials);
+        return buildCurrentRooms(data.allSessions, data.subLevelMap, data.pinnedMaterials, loadLevelMap(data.allSessions));
     }
 
     @Transactional(readOnly = true)
@@ -350,7 +359,8 @@ public class DashboardService {
     private List<MentorSessionDashboardDto> buildCurrentRooms(
             List<RoomLearningSession> sessions,
             Map<Long, SubLevel> subLevelMap,
-            List<PinnedMaterial> pinnedMaterials
+            List<PinnedMaterial> pinnedMaterials,
+            Map<Long, Level> levelMap
     ) {
         Map<UUID, Long> pinnedCountBySession = pinnedMaterials.stream()
                 .collect(Collectors.groupingBy(PinnedMaterial::getRoomSessionId, Collectors.counting()));
@@ -363,7 +373,10 @@ public class DashboardService {
                         .realtimeRoomId(session.getRealtimeRoomId())
                         .realtimeAgoraChannelName(session.getRealtimeAgoraChannelName())
                         .levelId(session.getLevelId())
+                        .levelTitle(Optional.ofNullable(levelMap.get(session.getLevelId())).map(Level::getTitle).orElse(null))
                         .currentSubLevelId(session.getCurrentSubLevelId())
+                        .currentSubNumber(Optional.ofNullable(subLevelMap.get(session.getCurrentSubLevelId())).map(SubLevel::getSubNumber).orElse(null))
+                        .totalSubLevels(Optional.ofNullable(levelMap.get(session.getLevelId())).map(level -> level.getSubLevels().size()).orElse(0))
                         .currentSubLevelTopic(Optional.ofNullable(subLevelMap.get(session.getCurrentSubLevelId()))
                                 .map(SubLevel::getTopic)
                                 .orElse(null))
@@ -372,6 +385,13 @@ public class DashboardService {
                         .pinnedMaterialCount(pinnedCountBySession.getOrDefault(session.getId(), 0L))
                         .build())
                 .toList();
+    }
+
+    private Map<Long, Level> loadLevelMap(List<RoomLearningSession> sessions) {
+        List<Long> ids = sessions.stream().map(RoomLearningSession::getLevelId).distinct().toList();
+        if (ids.isEmpty()) return Map.of();
+        return levelRepository.findAllById(ids).stream()
+                .collect(Collectors.toMap(Level::getId, Function.identity()));
     }
 
     private MentorDashboardResponseDto.CurrentSubLevelDto toCurrentSubLevel(
@@ -410,6 +430,8 @@ public class DashboardService {
                 .startedAt(recording.getStartedAt())
                 .endedAt(recording.getEndedAt())
                 .provider(recording.getProvider())
+                .storageObjectKey(recording.getStorageObjectKey())
+                .podcastId(recording.getPodcastId())
                 .build();
     }
 

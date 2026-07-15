@@ -17,7 +17,10 @@ public class MentorSessionDashboardDto {
     private String realtimeRoomId;
     private String realtimeAgoraChannelName;
     private Long levelId;
+    private String levelTitle;
     private Long currentSubLevelId;
+    private Integer currentSubNumber;
+    private Integer totalSubLevels;
     private String currentSubLevelTopic;
     private Instant startedAt;
     private Instant endedAt;

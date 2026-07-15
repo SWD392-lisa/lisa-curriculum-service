@@ -1,6 +1,8 @@
 package com.lisa.curriculum.dto;
 
-import lombok.*;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -8,18 +10,14 @@ import java.util.UUID;
 @Getter
 @Setter
 @NoArgsConstructor
-@AllArgsConstructor
-@Builder
-public class SessionRecordingDto {
+public class RecordingReadyEventDto {
     private String recordingId;
-    private UUID roomSessionId;
-    private String playbackUrl;
-    private Integer durationSeconds;
+    private UUID sessionId;
     private String status;
-    private Instant createdAt;
-    private Instant startedAt;
-    private Instant endedAt;
     private String provider;
     private String storageObjectKey;
+    private Integer durationSeconds;
     private String podcastId;
+    private Instant startedAt;
+    private Instant endedAt;
 }

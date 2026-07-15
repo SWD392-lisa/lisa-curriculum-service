@@ -11,9 +11,8 @@ FROM eclipse-temurin:17-jre-alpine
 WORKDIR /app
 RUN addgroup -S lisa && adduser -S lisa -G lisa
 COPY --from=build /app/target/*.jar app.jar
-RUN apk add --no-cache curl
 USER lisa
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-  CMD curl -f http://localhost:8080/actuator/health || exit 1
+  CMD wget -qO- http://localhost:8080/actuator/health >/dev/null || exit 1
 ENTRYPOINT ["java", "-jar", "app.jar"]

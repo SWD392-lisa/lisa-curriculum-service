@@ -72,8 +72,9 @@ public class DashboardController {
     @PreAuthorize("hasAnyRole('MENTOR', 'CREATOR')")
     @Operation(summary = "Lấy danh sách learner progress cho mentor")
     public ResponseEntity<List<MentorLearnerProgressDto>> getMentorLearners(
-            @RequestParam(required = false) String mentorId) {
-        return ResponseEntity.ok(dashboardService.getMentorLearners(resolveMentorId(mentorId)));
+            @RequestParam(required = false) String mentorId,
+            @RequestParam(required = false) UUID sessionId) {
+        return ResponseEntity.ok(dashboardService.getMentorLearners(resolveMentorId(mentorId), sessionId));
     }
 
     @GetMapping("/mentor/dashboard/sessions")
