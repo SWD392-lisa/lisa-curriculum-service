@@ -53,6 +53,12 @@ public class RoomSessionController {
         return ResponseEntity.ok(sessionService.getState(sessionId));
     }
 
+    @GetMapping("/room-sessions/{sessionId}/lobby")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<RoomSessionLobbyDto> getLobby(@PathVariable UUID sessionId) {
+        return ResponseEntity.ok(sessionService.getLobby(sessionId));
+    }
+
     @GetMapping("/room-sessions/{sessionId}/sub-level-history")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<List<SubLevelHistoryDto>> getSubLevelHistory(@PathVariable UUID sessionId) {

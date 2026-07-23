@@ -2,6 +2,7 @@ package com.lisa.curriculum.exception;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import java.util.Map;
 
 @Slf4j
@@ -39,11 +40,33 @@ public class GlobalExceptionHandler {
                 .body(Map.of("error", "Invalid session state transition", "message", e.getMessage()));
     }
 
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<?> handleValidation(MethodArgumentNotValidException e) {
+        String message = e.getBindingResult().getFieldErrors().stream()
+                .findFirst()
+                .map(error -> error.getField() + ": " + error.getDefaultMessage())
+                .orElse("Invalid request");
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(Map.of("error", "VALIDATION_FAILED", "message", message));
+    }
+
+    @ExceptionHandler(SpeakingPracticeRequiredException.class)
+    public ResponseEntity<?> handleSpeakingPracticeRequired(SpeakingPracticeRequiredException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(Map.of("error", "SPEAKING_PRACTICE_REQUIRED", "message", e.getMessage()));
+    }
+
     @ExceptionHandler(AiProviderUnavailableException.class)
     public ResponseEntity<?> handleAiUnavailable(AiProviderUnavailableException e) {
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                 .body(Map.of("error", "AI_PROVIDER_UNAVAILABLE",
                         "message", "AI suggestions are temporarily unavailable."));
+    }
+
+    @ExceptionHandler(RateLimitExceededException.class)
+    public ResponseEntity<?> handleRateLimit(RateLimitExceededException e) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .body(Map.of("error", "RATE_LIMITED", "message", e.getMessage()));
     }
 
     @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)

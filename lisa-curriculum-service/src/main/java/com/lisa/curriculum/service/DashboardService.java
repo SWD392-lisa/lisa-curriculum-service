@@ -4,6 +4,7 @@ import com.lisa.curriculum.dto.*;
 import com.lisa.curriculum.entity.*;
 import com.lisa.curriculum.exception.InvalidSessionStateException;
 import com.lisa.curriculum.exception.ResourceNotFoundException;
+import com.lisa.curriculum.exception.SpeakingPracticeRequiredException;
 import com.lisa.curriculum.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -34,6 +35,7 @@ public class DashboardService {
     private final SessionRecordingRepository sessionRecordingRepository;
     private final SubLevelRepository subLevelRepository;
     private final LevelRepository levelRepository;
+    private final SpeakingAssessmentRepository speakingAssessmentRepository;
     private final LmsCacheService cacheService;
 
     @Transactional
@@ -100,6 +102,12 @@ public class DashboardService {
 
     @Transactional
     public LearnerProgressResponseDto saveLearnerProgress(String learnerUserId, LearnerProgressRequestDto dto) {
+        SubLevel requestedSubLevel = subLevelRepository.findById(dto.getSubLevelId())
+                .orElseThrow(() -> new ResourceNotFoundException("Sub-level not found: " + dto.getSubLevelId()));
+        if (!requestedSubLevel.getLevel().getId().equals(dto.getLevelId())) {
+            throw new IllegalArgumentException("Sub-level " + dto.getSubLevelId()
+                    + " does not belong to level " + dto.getLevelId());
+        }
         if (dto.getSessionId() != null) {
             RoomLearningSession session = getSession(dto.getSessionId());
             if (!attendanceRepo.existsByRoomSessionIdAndLearnerUserId(dto.getSessionId(), learnerUserId)) {
@@ -117,6 +125,17 @@ public class DashboardService {
                         .subLevelId(dto.getSubLevelId())
                         .build());
 
+        boolean englishLesson = requestedSubLevel.getLevel().getLanguage() == Language.ENGLISH;
+        if (dto.isCompleted() && !progress.isCompleted() && englishLesson
+                && !speakingAssessmentRepository.existsForLearnerAndSubLevel(learnerUserId, dto.getSubLevelId())) {
+            throw new SpeakingPracticeRequiredException(
+                    "Complete at least one AI speaking practice before finishing this sub-level");
+        }
+        int speakingSeconds = englishLesson
+                ? Math.toIntExact(speakingAssessmentRepository
+                        .sumSpeakingSecondsForLearnerAndSubLevel(learnerUserId, dto.getSubLevelId()))
+                : dto.getSpeakingSeconds();
+
         if (dto.getIdempotencyKey() != null && !dto.getIdempotencyKey().trim().isEmpty()) {
             if (dto.getIdempotencyKey().equals(progress.getLastIdempotencyKey())) {
                 log.info("[Progress] Duplicate request detected for key {}. Returning existing progress.", dto.getIdempotencyKey());
@@ -129,7 +148,9 @@ public class DashboardService {
                 progress.setCompleted(false);
                 progress.setCompletedAt(null);
             }
-            progress.setSpeakingSeconds(progress.getSpeakingSeconds() + dto.getSpeakingSeconds());
+            progress.setSpeakingSeconds(englishLesson
+                    ? Math.max(progress.getSpeakingSeconds(), speakingSeconds)
+                    : progress.getSpeakingSeconds() + speakingSeconds);
             progress.setLastIdempotencyKey(dto.getIdempotencyKey());
         } else {
             if (dto.isCompleted() && !progress.isCompleted()) {
@@ -140,7 +161,7 @@ public class DashboardService {
                 progress.setCompletedAt(null);
             }
             // Safe fallback: use max to prevent infinite accumulation on duplicate retries
-            progress.setSpeakingSeconds(Math.max(progress.getSpeakingSeconds(), dto.getSpeakingSeconds()));
+            progress.setSpeakingSeconds(Math.max(progress.getSpeakingSeconds(), speakingSeconds));
         }
 
         progress.setUpdatedAt(Instant.now());

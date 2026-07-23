@@ -52,6 +52,12 @@ class DashboardIntegrationTest {
     private LearnerProgressRepository progressRepo;
 
     @Autowired
+    private SpeakingTaskRepository taskRepo;
+
+    @Autowired
+    private SpeakingAssessmentRepository assessmentRepo;
+
+    @Autowired
     private PinnedMaterialRepository pinnedMaterialRepo;
 
     @Autowired
@@ -66,6 +72,7 @@ class DashboardIntegrationTest {
 
     private Long testLevelId;
     private Long testSubLevelId;
+    private Long testTaskId;
     private UUID testSessionId;
 
     private String generateToken(String userId, String email, String roleId) {
@@ -89,6 +96,7 @@ class DashboardIntegrationTest {
         attendanceRepo.deleteAll();
         sessionRepo.deleteAll();
         progressRepo.deleteAll();
+        assessmentRepo.deleteAll();
         subLevelRepo.deleteAll();
         levelRepo.deleteAll();
 
@@ -120,6 +128,14 @@ class DashboardIntegrationTest {
         sub = subLevelRepo.save(sub);
         testSubLevelId = sub.getId();
 
+        SpeakingTask task = taskRepo.save(SpeakingTask.builder()
+                .subLevel(sub)
+                .taskType(TaskType.BULLET)
+                .content("Describe your study place")
+                .orderIndex(0)
+                .build());
+        testTaskId = task.getId();
+
         RoomLearningSession session = RoomLearningSession.builder()
                 .id(UUID.randomUUID())
                 .channelName("lms-test-session")
@@ -137,6 +153,7 @@ class DashboardIntegrationTest {
     @DisplayName("Should update and retrieve learner progress successfully with simple caching")
     void testLearnerProgressFlow() throws Exception {
         String token = generateToken("LEARNER-123", "student@lisa.com", "1"); // ROLE_USER
+        saveAssessment("LEARNER-123", 30, 80);
 
         LearnerProgressRequestDto req = LearnerProgressRequestDto.builder()
                 .levelId(testLevelId)
@@ -177,7 +194,7 @@ class DashboardIntegrationTest {
                         .content(objectMapper.writeValueAsString(req))
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.speakingSeconds").value(45)); // accumulated: 30 + 15 = 45
+                .andExpect(jsonPath("$.speakingSeconds").value(30));
 
         // 4. Retry the same request with the same idempotency key (should be no-op/idempotent)
         mockMvc.perform(post("/api/lms/learner-progress")
@@ -185,7 +202,7 @@ class DashboardIntegrationTest {
                         .content(objectMapper.writeValueAsString(req))
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.speakingSeconds").value(45)); // still 45
+                .andExpect(jsonPath("$.speakingSeconds").value(30));
 
         // Verify cache evicted
         assertThat(cache.get("LEARNER-123")).isNull();
@@ -226,6 +243,7 @@ class DashboardIntegrationTest {
     void testMentorDashboardStats() throws Exception {
         String mentorToken = generateToken("MENTOR-456", "mentor@lisa.com", "2"); // ROLE_MENTOR
         String learnerToken = generateToken("LEARNER-789", "student@lisa.com", "1");
+        saveAssessment("LEARNER-789", 120, 85);
 
         // 1. Record some attendance join/leave
         mockMvc.perform(post("/api/lms/room-sessions/" + testSessionId + "/attendance/join")
@@ -290,6 +308,41 @@ class DashboardIntegrationTest {
     }
 
     @Test
+    @DisplayName("English sub-level requires an AI speaking assessment before completion")
+    void testEnglishCompletionRequiresSpeakingPractice() throws Exception {
+        String token = generateToken("LEARNER-NO-PRACTICE", "student@lisa.com", "1");
+        LearnerProgressRequestDto request = LearnerProgressRequestDto.builder()
+                .levelId(testLevelId)
+                .subLevelId(testSubLevelId)
+                .completed(true)
+                .speakingSeconds(30)
+                .build();
+
+        mockMvc.perform(post("/api/lms/learner-progress")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request))
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("SPEAKING_PRACTICE_REQUIRED"));
+    }
+
+    private void saveAssessment(String learnerId, int speakingSeconds, int score) {
+        SpeakingTask task = taskRepo.findById(testTaskId).orElseThrow();
+        assessmentRepo.save(SpeakingAssessment.builder()
+                .learnerUserId(learnerId)
+                .task(task)
+                .transcript("I study in a quiet library near my home.")
+                .overallScore(score)
+                .relevanceScore(score)
+                .grammarScore(score)
+                .vocabularyScore(score)
+                .feedback("Good answer")
+                .suggestedAnswer("I usually study in a quiet library near my home.")
+                .speakingSeconds(speakingSeconds)
+                .build());
+    }
+
+    @Test
     @DisplayName("User who never joined cannot view room state")
     void testUserWhoNeverJoinedCannotViewRoomState() throws Exception {
         String token = generateToken("LEARNER-404", "student@lisa.com", "1");
@@ -297,6 +350,20 @@ class DashboardIntegrationTest {
         mockMvc.perform(get("/api/lms/room-sessions/" + testSessionId + "/state")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("Learner can view lobby metadata before joining a room")
+    void testLearnerCanViewLobbyBeforeJoining() throws Exception {
+        String token = generateToken("LEARNER-404", "student@lisa.com", "1");
+
+        mockMvc.perform(get("/api/lms/room-sessions/" + testSessionId + "/lobby")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.sessionId").value(testSessionId.toString()))
+                .andExpect(jsonPath("$.status").value("LIVE"))
+                .andExpect(jsonPath("$.levelSummary.id").value(testLevelId))
+                .andExpect(jsonPath("$.currentSubLevel.id").value(testSubLevelId));
     }
 
     @Test

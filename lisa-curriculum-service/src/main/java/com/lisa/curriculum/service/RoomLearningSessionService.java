@@ -269,6 +269,38 @@ public class RoomLearningSessionService {
                 .build();
     }
 
+    @Transactional(readOnly = true)
+    public RoomSessionLobbyDto getLobby(UUID sessionId) {
+        RoomLearningSession session = sessionRepo.findById(sessionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Session not found: " + sessionId));
+        validateCurrentSubLevelBelongsToSessionLevel(session);
+
+        Level level = levelRepo.findById(session.getLevelId())
+                .orElseThrow(() -> new ResourceNotFoundException("Level not found: " + session.getLevelId()));
+        SubLevel subLevel = subLevelRepo.findById(session.getCurrentSubLevelId())
+                .orElseThrow(() -> new ResourceNotFoundException("SubLevel not found: " + session.getCurrentSubLevelId()));
+
+        return RoomSessionLobbyDto.builder()
+                .sessionId(sessionId)
+                .status(session.getStatus().name())
+                .levelSummary(RoomSessionStateDto.LevelSummaryDto.builder()
+                        .id(level.getId())
+                        .language(level.getLanguage().name())
+                        .stage(level.getStage())
+                        .levelNumber(level.getLevelNumber())
+                        .title(level.getTitle())
+                        .cefrTarget(level.getCefrTarget())
+                        .durationMinutes(level.getDurationMinutes())
+                        .build())
+                .currentSubLevel(SubLevelDto.builder()
+                        .id(subLevel.getId())
+                        .subNumber(subLevel.getSubNumber())
+                        .topic(subLevel.getTopic())
+                        .durationMinutes(subLevel.getDurationMinutes())
+                        .build())
+                .build();
+    }
+
     @Transactional
     @CacheEvict(value = "mentor_dashboard", allEntries = true)
     public RoomSessionResponseDto switchToNextSubLevel(UUID sessionId, String reason) {
